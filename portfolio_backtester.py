@@ -334,8 +334,8 @@ class PortfolioBacktester:
                 for asset, weight in top_weights.items():
                     print(f"{asset}: {weight:.2%}")
 
-    def plot_performance_comparison(self):
-        """Plot performance comparison charts"""
+    def plot_performance_comparison(self, save_path=None, show=True):
+        """Plot performance comparison charts and optionally save to file"""
         if not self.results:
             print("No results to plot")
             return
@@ -355,12 +355,10 @@ class PortfolioBacktester:
             nifty_perf = results['nifty_performance']
 
             if portfolio_perf and nifty_perf:
-                # Plot cumulative returns
                 portfolio_cum_returns = portfolio_perf['cumulative_returns']
                 nifty_cum_returns = nifty_perf['cumulative_returns']
-
-                # Align dates
                 common_dates = portfolio_cum_returns.index.intersection(nifty_cum_returns.index)
+
                 if not common_dates.empty:
                     axes[row, col].plot(common_dates,
                                       portfolio_cum_returns.loc[common_dates],
@@ -377,61 +375,26 @@ class PortfolioBacktester:
                     axes[row, col].legend()
                     axes[row, col].grid(True, alpha=0.3)
 
-        # If only one backtest type, use remaining subplots for metrics comparison
-        if len(self.results) == 1:
-            # Create metrics comparison bar chart
-            result = list(self.results.values())[0]
-            portfolio_perf = result['portfolio_performance']
-            nifty_perf = result['nifty_performance']
-
-            if portfolio_perf and nifty_perf:
-                metrics = ['Total Return', 'Annualized Return', 'Volatility', 'Sharpe Ratio']
-                portfolio_values = [
-                    portfolio_perf['total_return'],
-                    portfolio_perf['annualized_return'],
-                    portfolio_perf['volatility'],
-                    portfolio_perf['sharpe_ratio']
-                ]
-                nifty_values = [
-                    nifty_perf['total_return'],
-                    nifty_perf['annualized_return'],
-                    nifty_perf['volatility'],
-                    nifty_perf['sharpe_ratio']
-                ]
-
-                x = np.arange(len(metrics))
-                width = 0.35
-
-                axes[0, 1].bar(x - width/2, portfolio_values, width,
-                              label='BL CNN-BiLSTM Strategy', color=colors[0])
-                axes[0, 1].bar(x + width/2, nifty_values, width,
-                              label='Nifty 50', color=colors[1])
-
-                axes[0, 1].set_title('Performance Metrics Comparison')
-                axes[0, 1].set_xlabel('Metrics')
-                axes[0, 1].set_ylabel('Value')
-                axes[0, 1].set_xticks(x)
-                axes[0, 1].set_xticklabels(metrics, rotation=45)
-                axes[0, 1].legend()
-                axes[0, 1].grid(True, alpha=0.3)
-
         plt.tight_layout()
-        plt.show()
 
-    def run_comprehensive_backtest(self, **kwargs):
+        # Save if a path is provided
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"✅ Saved performance plot to: {save_path}")
+
+        if show:
+            plt.show()
+
+        plt.close()
+
+    def run_comprehensive_backtest(self, save_plot_path=None, **kwargs):
         """Run both types of backtesting"""
         print("Starting Comprehensive Backtesting...")
 
-        # Run Type 1 backtesting
-        type1_results = self.backtest_type_1_full_training(**kwargs)
+        self.backtest_type_1_full_training(**kwargs)
+        self.backtest_type_2_out_of_sample(**kwargs)
 
-        # Run Type 2 backtesting
-        type2_results = self.backtest_type_2_out_of_sample(**kwargs)
-
-        # Display results
         self.display_results()
-
-        # Plot results
-        self.plot_performance_comparison()
+        self.plot_performance_comparison(save_path=save_plot_path, show=True)
 
         return self.results
