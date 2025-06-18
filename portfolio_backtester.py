@@ -24,7 +24,7 @@ class PortfolioBacktester:
         """Fetch Nifty 50 index data for benchmark comparison"""
         try:
             nifty_data = yf.download(self.nifty_ticker, start=start_date, end=end_date)
-            nifty_returns = nifty_data['Adj Close'].pct_change().dropna()
+            nifty_returns = nifty_data['Close'].pct_change().dropna()
             return nifty_returns
         except Exception as e:
             print(f"Error fetching Nifty data: {e}")
