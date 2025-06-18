@@ -46,16 +46,16 @@ class PortfolioBacktester:
         portfolio_returns = (period_returns * aligned_weights).sum(axis=1)
 
         # Calculate metrics
-        total_return = (1 + portfolio_returns).prod() - 1
-        annualized_return = (1 + total_return) ** (252 / len(portfolio_returns)) - 1
-        volatility = portfolio_returns.std() * np.sqrt(252)
+        total_return = float((1 + portfolio_returns).prod() - 1)
+        annualized_return = float((1 + total_return) ** (252 / len(portfolio_returns)) - 1)
+        volatility = float(portfolio_returns.std() * np.sqrt(252))
         sharpe_ratio = (annualized_return - 0.06) / volatility if volatility > 0 else 0
 
         # Maximum drawdown
         cumulative_returns = (1 + portfolio_returns).cumprod()
         rolling_max = cumulative_returns.expanding().max()
         drawdowns = (cumulative_returns - rolling_max) / rolling_max
-        max_drawdown = drawdowns.min()
+        max_drawdown = float(drawdowns.min())
 
         return {
             'total_return': total_return,
@@ -131,17 +131,19 @@ class PortfolioBacktester:
 
         # Get Nifty benchmark performance
         nifty_returns = self.fetch_nifty_data(start_date, end_date)
+        if isinstance(nifty_returns, pd.DataFrame):
+            nifty_returns = nifty_returns['Close'].pct_change().dropna()
         nifty_performance = None
 
         if not nifty_returns.empty:
-            nifty_total_return = (1 + nifty_returns).prod() - 1
-            nifty_annualized_return = (1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1
+            nifty_total_return = float(((1 + nifty_returns).prod() - 1))
+            nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
             nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
             nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
             nifty_cumulative = (1 + nifty_returns).cumprod()
             nifty_rolling_max = nifty_cumulative.expanding().max()
             nifty_drawdowns = (nifty_cumulative - nifty_rolling_max) / nifty_rolling_max
-            nifty_max_drawdown = nifty_drawdowns.min()
+            nifty_max_drawdown = float(nifty_drawdowns.min())
 
             nifty_performance = {
                 'total_return': nifty_total_return,
@@ -252,17 +254,19 @@ class PortfolioBacktester:
 
         # Get Nifty benchmark performance for test period
         nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
+        if isinstance(nifty_returns, pd.DataFrame):
+            nifty_returns = nifty_returns['Close'].pct_change().dropna()
         nifty_performance = None
 
         if not nifty_returns.empty:
-            nifty_total_return = (1 + nifty_returns).prod() - 1
-            nifty_annualized_return = (1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1
+            nifty_total_return = float((1 + nifty_returns).prod() - 1)
+            nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
             nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
             nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
             nifty_cumulative = (1 + nifty_returns).cumprod()
             nifty_rolling_max = nifty_cumulative.expanding().max()
             nifty_drawdowns = (nifty_cumulative - nifty_rolling_max) / nifty_rolling_max
-            nifty_max_drawdown = nifty_drawdowns.min()
+            nifty_max_drawdown = float(nifty_drawdowns.min())
 
             nifty_performance = {
                 'total_return': nifty_total_return,
