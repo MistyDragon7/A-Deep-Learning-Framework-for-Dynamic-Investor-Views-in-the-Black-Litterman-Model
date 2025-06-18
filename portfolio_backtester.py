@@ -136,9 +136,8 @@ class PortfolioBacktester:
         if not nifty_returns.empty:
             nifty_total_return = (1 + nifty_returns).prod() - 1
             nifty_annualized_return = (1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1
-            nifty_volatility = nifty_returns.std() * np.sqrt(252)
+            nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
             nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
-
             nifty_cumulative = (1 + nifty_returns).cumprod()
             nifty_rolling_max = nifty_cumulative.expanding().max()
             nifty_drawdowns = (nifty_cumulative - nifty_rolling_max) / nifty_rolling_max
@@ -258,9 +257,8 @@ class PortfolioBacktester:
         if not nifty_returns.empty:
             nifty_total_return = (1 + nifty_returns).prod() - 1
             nifty_annualized_return = (1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1
-            nifty_volatility = nifty_returns.std() * np.sqrt(252)
+            nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
             nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
-
             nifty_cumulative = (1 + nifty_returns).cumprod()
             nifty_rolling_max = nifty_cumulative.expanding().max()
             nifty_drawdowns = (nifty_cumulative - nifty_rolling_max) / nifty_rolling_max
