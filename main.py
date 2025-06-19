@@ -1,7 +1,6 @@
 from portfolio_backtester import PortfolioBacktester
 import matplotlib.pyplot as plt
 
-# List of NIFTY 50 tickers
 nifty_50_stocks = [
     "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
     "KOTAKBANK.NS", "LT.NS", "SBIN.NS", "AXISBANK.NS", "HINDUNILVR.NS",
@@ -15,19 +14,17 @@ nifty_50_stocks = [
     "SBILIFE.NS", "INDUSINDBK.NS", "SHREECEM.NS", "ICICIPRULI.NS", "APOLLOHOSP.NS"
 ]
 
-# Initialize backtester
 backtester = PortfolioBacktester(stock_list=nifty_50_stocks)
 
-# Run both backtests
-# Run both backtests
-results = backtester.run_comprehensive_backtest(
+backtester.run_comprehensive_backtest(
     sequence_length=30,
     epochs=25,
     batch_size=32,
     prediction_horizon=5,
     risk_aversion=3.0,
     tau=0.025,
-    save_plot_path="performance_comparison.png"
+    save_plot_path="results/performance_comparison.png",
+    output_dir="results"
 )
 
 # Save performance plot
@@ -37,7 +34,6 @@ print("Saved as performance_comparison.png")
 
 # Optional: Save summary metrics to CSV
 import pandas as pd
-
 summary = []
 for backtest_type, res in results.items():
     label = "Full Training" if backtest_type == "type_1" else "Out-of-Sample"

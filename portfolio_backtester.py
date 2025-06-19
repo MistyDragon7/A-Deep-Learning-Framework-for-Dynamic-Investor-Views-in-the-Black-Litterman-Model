@@ -339,17 +339,19 @@ class PortfolioBacktester:
     def plot_performance_comparison(self, save_path=None, show=True):
         """Plot performance comparison charts and optionally save to file"""
         if not self.results:
-            print("No results to plot")
+            print("No results to plot.")
             return
+
+        import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
         fig.suptitle('Black-Litterman CNN-BiLSTM Strategy Performance Analysis', fontsize=16)
-
         colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
 
         for idx, (backtest_type, results) in enumerate(self.results.items()):
             row = idx // 2
             col = idx % 2
+            ax = axes[row, col]
 
             type_name = "Full Training" if backtest_type == 'type_1' else "Out-of-Sample"
 
@@ -359,35 +361,114 @@ class PortfolioBacktester:
             if portfolio_perf and nifty_perf:
                 portfolio_cum_returns = portfolio_perf['cumulative_returns']
                 nifty_cum_returns = nifty_perf['cumulative_returns']
+
+                # Ensure datetime index and normalize for alignment
+                portfolio_cum_returns.index = pd.to_datetime(portfolio_cum_returns.index).normalize()
+                nifty_cum_returns.index = pd.to_datetime(nifty_cum_returns.index).normalize()
+
+                # Intersect common dates
                 common_dates = portfolio_cum_returns.index.intersection(nifty_cum_returns.index)
 
                 if not common_dates.empty:
-                    axes[row, col].plot(common_dates,
-                                      portfolio_cum_returns.loc[common_dates],
-                                      label='BL CNN-BiLSTM Strategy',
-                                      color=colors[0], linewidth=2)
-                    axes[row, col].plot(common_dates,
-                                      nifty_cum_returns.loc[common_dates],
-                                      label='Nifty 50',
-                                      color=colors[1], linewidth=2)
+                    ax.plot(common_dates,
+                            portfolio_cum_returns.loc[common_dates],
+                            label='BL CNN-BiLSTM Strategy',
+                            color=colors[0], linewidth=2)
+                    ax.plot(common_dates,
+                            nifty_cum_returns.loc[common_dates],
+                            label='Nifty 50',
+                            color=colors[1], linewidth=2)
+                    ax.set_title(f'{type_name} - Cumulative Returns')
+                else:
+                    print(f"⚠️ No common dates for {type_name}. Plotting individually.")
 
-                    axes[row, col].set_title(f'{type_name} - Cumulative Returns')
-                    axes[row, col].set_xlabel('Date')
-                    axes[row, col].set_ylabel('Cumulative Return')
-                    axes[row, col].legend()
-                    axes[row, col].grid(True, alpha=0.3)
+                    ax.plot(portfolio_cum_returns, label='BL CNN-BiLSTM Strategy', color=colors[0], linewidth=2)
+                    ax.plot(nifty_cum_returns, label='Nifty 50', color=colors[1], linewidth=2)
+                    ax.set_title(f'{type_name} - Non-Aligned Returns')
 
-        plt.tight_layout()
+                ax.set_xlabel('Date')
+                ax.set_ylabel('Cumulative Return')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
 
-        # Save if a path is provided
+            else:
+                print(f"⚠️ Missing data for {type_name}. Skipping plot.")
+                ax.set_title(f'{type_name} - No Data')
+                ax.axis('off')
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"✅ Saved performance plot to: {save_path}")
+            print(f"✅ Saved performance comparison to {save_path}")
 
         if show:
             plt.show()
 
         plt.close()
+
+    def save_all_results(self, metrics_path="backtest_summary.csv", output_dir="./"):
+        """Save all metrics, weights, views, uncertainties, and returns for each backtest"""
+        import os
+        import pandas as pd
+
+        os.makedirs(output_dir, exist_ok=True)
+        summary_rows = []
+
+        for backtest_type, res in self.results.items():
+            suffix = f"{backtest_type}"
+            portfolio = res.get("portfolio_performance")
+            nifty = res.get("nifty_performance")
+
+            if not portfolio or not nifty:
+                continue
+
+            summary_rows.append({
+                "Backtest Type": backtest_type,
+                "Training Period": res.get("training_period", ""),
+                "Testing Period": res.get("testing_period", ""),
+                "Portfolio Return": float(portfolio["annualized_return"]),
+                "Portfolio Volatility": float(portfolio["volatility"]),
+                "Portfolio Sharpe": float(portfolio["sharpe_ratio"]),
+                "Portfolio Max Drawdown": float(portfolio["max_drawdown"]),
+                "Nifty Return": float(nifty["annualized_return"]),
+                "Nifty Volatility": float(nifty["volatility"]),
+                "Nifty Sharpe": float(nifty["sharpe_ratio"]),
+                "Nifty Max Drawdown": float(nifty["max_drawdown"]),
+                "Excess Return": float(portfolio["annualized_return"] - nifty["annualized_return"]),
+            })
+
+            # Save full weights
+            weights = res.get("optimal_weights", pd.Series())
+            if not weights.empty:
+                weights.to_csv(os.path.join(output_dir, f"weights_{suffix}.csv"))
+                print(f"✅ Saved weights to weights_{suffix}.csv")
+
+            # Save views
+            views = res.get("views", {})
+            if views:
+                pd.Series(views).to_csv(os.path.join(output_dir, f"views_{suffix}.csv"))
+                print(f"✅ Saved views to views_{suffix}.csv")
+
+            # Save uncertainties
+            view_unc = res.get("view_uncertainties", {})
+            if view_unc:
+                pd.Series(view_unc).to_csv(os.path.join(output_dir, f"view_uncertainties_{suffix}.csv"))
+                print(f"✅ Saved view uncertainties to view_uncertainties_{suffix}.csv")
+
+            # Save cumulative returns
+            cumret = portfolio.get("cumulative_returns")
+            if isinstance(cumret, pd.Series) and not cumret.empty:
+                cumret.to_csv(os.path.join(output_dir, f"cumulative_returns_{suffix}.csv"))
+                print(f"✅ Saved cumulative returns to cumulative_returns_{suffix}.csv")
+
+        # Save summary table
+        if summary_rows:
+            df = pd.DataFrame(summary_rows)
+            df.to_csv(os.path.join(output_dir, metrics_path), index=False)
+            print(f"✅ Saved summary to {metrics_path}")
+        else:
+            print("⚠️ No results to summarize.")
 
     def run_comprehensive_backtest(self, save_plot_path=None, **kwargs):
         """Run both types of backtesting"""
@@ -398,5 +479,6 @@ class PortfolioBacktester:
 
         self.display_results()
         self.plot_performance_comparison(save_path=save_plot_path, show=True)
+        self.save_all_results(output_dir=output_dir)
 
         return self.results

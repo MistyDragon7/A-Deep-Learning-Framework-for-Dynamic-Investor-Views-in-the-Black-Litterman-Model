@@ -29,37 +29,26 @@ class CNNBiLSTMViewsGenerator:
         """Prepare training data for individual stock"""
         df = stock_data[ticker].copy()
 
-        # Create feature matrix
         features_list = []
         for col in self.feature_columns:
             if col in df.columns:
-                # Convert to numpy array and ensure float type before replacing infinities
-                feature_data = df[col].values.astype(np.float64) # Explicitly cast to float64
+                feature_data = df[col].values.astype(np.float64)
                 feature_data[np.isinf(feature_data)] = np.nan
                 features_list.append(feature_data)
             else:
-                # Append a numpy array of zeros with float type
                 features_list.append(np.zeros(len(df), dtype=np.float64))
 
         features = np.array(features_list).T  # Shape: (n_samples, n_features)
 
-        # Fill NaNs after stacking
         features = pd.DataFrame(features).fillna(method='ffill').fillna(method='bfill').fillna(0).values
 
-        # Create sequences
         X, y = [], []
-        # Adjust loop range to ensure we don't go past the end of the data for the target 'y'
-        # The target 'y' is the return for the day *after* the sequence ends (i+1)
-        # So we need data up to i+1, meaning i can go up to len(features) - 2
         for i in range(self.sequence_length, len(features) - 1):
             X.append(features[i-self.sequence_length:i])
-            # Predict next day return
             if 'Returns' in df.columns and i + 1 < len(df): # Ensure i+1 is a valid index
                  next_return = df['Returns'].iloc[i+1]
-                 # Ensure next_return is treated as a float, handle potential NaNs from .iloc
                  y.append(float(next_return) if not pd.isna(next_return) else 0.0)
             else:
-                 # If 'Returns' column doesn't exist or i+1 is out of bounds, append 0.0 (float)
                  y.append(0.0)
 
 
@@ -105,7 +94,6 @@ class CNNBiLSTMViewsGenerator:
         for ticker in stock_data.keys():
             print(f"\nTraining model for {ticker}")
 
-            # Prepare data
             X, y = self.prepare_data_for_stock(stock_data, ticker)
 
             if len(X) < 100:  # Skip if insufficient data after preparing sequences
