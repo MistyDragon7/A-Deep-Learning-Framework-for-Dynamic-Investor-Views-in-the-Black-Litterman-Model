@@ -67,7 +67,7 @@ class PortfolioBacktester:
             'cumulative_returns': cumulative_returns
         }
 
-    def backtest_type_1_full_training(self, sequence_length=30, epochs=30, batch_size=32,
+    def backtest_type_1_full_training(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
                                      prediction_horizon=5, risk_aversion=3.0, tau=0.025):
         """
         Backtesting Type 1: Train on full 5 years, backtest on same period
@@ -75,9 +75,10 @@ class PortfolioBacktester:
         print("=" * 80)
         print("BACKTESTING TYPE 1: FULL TRAINING PERIOD")
         print("=" * 80)
-
+        if fetcher is None:
+            raise ValueError("This version of backtest_type_1_full_training requires a fetcher to be passed.")
         # Fetch 5 years of data
-        fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
+        # fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
         stock_data = fetcher.fetch_all_stocks()
 
         # Filter stocks with sufficient data
@@ -166,7 +167,7 @@ class PortfolioBacktester:
         }
         return self.results['type_1']
 
-    def backtest_type_2_out_of_sample(self, sequence_length=30, epochs=30, batch_size=32,
+    def backtest_type_2_out_of_sample(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
                                      prediction_horizon=5, risk_aversion=3.0, tau=0.025):
         """
         Backtesting Type 2: Train on 3 years, test on future 2 years
@@ -174,9 +175,10 @@ class PortfolioBacktester:
         print("=" * 80)
         print("BACKTESTING TYPE 2: OUT-OF-SAMPLE TESTING")
         print("=" * 80)
-
+        if fetcher is None:
+            raise ValueError("This version of backtest_type_1_full_training requires a fetcher to be passed.")
         # Fetch 5 years of data
-        fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
+        # fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
         stock_data = fetcher.fetch_all_stocks()
 
         # Filter stocks with sufficient data
@@ -470,30 +472,37 @@ class PortfolioBacktester:
         else:
             print("⚠️ No results to summarize.")
 
-    def run_comprehensive_backtest(self, save_plot_path=None, output_dir="./", **kwargs):
+    def run_comprehensive_backtest(self, save_plot_path=None, output_dir="./", use_frozen_data=True, frozen_data_path="data/frozen_data.pkl", **kwargs):
         """Run both types of backtesting and save all results"""
         import os
         os.makedirs(output_dir, exist_ok=True)
 
         print("Starting Comprehensive Backtesting...")
 
-        # Run both backtests (output_dir is not passed to them)
-        result1 = self.backtest_type_1_full_training(**kwargs)
-        result2 = self.backtest_type_2_out_of_sample(**kwargs)
+        # Set up data
+        fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
+        if use_frozen_data and os.path.exists(frozen_data_path):
+            load_frozen_data(fetcher, frozen_data_path)
+        else:
+            fetcher.fetch_all_stocks()
+            save_frozen_data(fetcher, frozen_data_path)
+        fetcher.add_technical_indicators()
 
-        # Inject view uncertainties for saving
+        # Store it for both backtest types
+        self._shared_fetcher = fetcher
+
+        # Run both backtests
+        result1 = self.backtest_type_1_full_training(fetcher=fetcher, **kwargs)
+        result2 = self.backtest_type_2_out_of_sample(fetcher=fetcher, **kwargs)
+
+        # Carry uncertainties to self.results
         if result1:
             self.results['type_1']['view_uncertainties'] = result1.get('view_uncertainties', {})
         if result2:
             self.results['type_2']['view_uncertainties'] = result2.get('view_uncertainties', {})
 
-        # Show metrics
         self.display_results()
-
-        # Save plot
         self.plot_performance_comparison(save_path=save_plot_path or os.path.join(output_dir, "performance_comparison.png"))
-
-        # Save all files
         self.save_all_results(output_dir=output_dir)
 
         return self.results

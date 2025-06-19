@@ -16,14 +16,16 @@ nifty_50_stocks = [
 
 backtester = PortfolioBacktester(stock_list=nifty_50_stocks)
 
-backtester.run_comprehensive_backtest(
+results = backtester.run_comprehensive_backtest(
     sequence_length=30,
     epochs=25,
     batch_size=32,
     prediction_horizon=5,
     risk_aversion=3.0,
     tau=0.025,
-    output_dir="results"
+    output_dir="results",
+    use_frozen_data=True,
+    frozen_data_path="data/frozen_data.pkl"
 )
 
 # Save performance plot

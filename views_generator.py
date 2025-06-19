@@ -9,6 +9,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+def mc_dropout(x, rate):
+    return Dropout(rate)(x, training=True)  # Keeps dropout active during inference
 class CNNBiLSTMViewsGenerator:
     """CNN-BiLSTM model to generate investor views for Black-Litterman"""
 
@@ -73,11 +75,8 @@ class CNNBiLSTMViewsGenerator:
         bilstm2 = Bidirectional(LSTM(25, return_sequences=False))(bilstm1)
 
         # Dense layers for prediction
-        dense1 = Dense(50, activation='relu')(bilstm2)
-        dense1 = Dropout(0.2)(dense1)
-
-        dense2 = Dense(25, activation='relu')(dense1)
-        dense2 = Dropout(0.1)(dense2)
+        dense1 = mc_dropout(Dense(50, activation='relu')(bilstm2), rate=0.2)
+        dense2 = mc_dropout(Dense(25, activation='relu')(dense1), rate=0.1)
 
         # Output: predicted return for next period
         output = Dense(1, activation='linear')(dense2)
@@ -149,7 +148,9 @@ class CNNBiLSTMViewsGenerator:
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         """Generate investor views using trained models"""
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
-
+        def predict_mc(model, x_input, n_samples=20):
+            preds = np.array([model(x_input, training=True).numpy().squeeze() for _ in range(n_samples)])
+            return preds
         views = {}
         view_uncertainties = {}
 
@@ -183,31 +184,9 @@ class CNNBiLSTMViewsGenerator:
 
             # Predict multiple horizons (simplified approach)
             # A more robust approach would be a recursive prediction
-            predictions = []
-            current_sequence = X_latest_scaled.copy()
-
-            for day in range(prediction_horizon):
-                # Predict next day return
-                pred = self.models[ticker].predict(current_sequence, verbose=0)[0][0]
-                predictions.append(pred)
-
-                # Update sequence for next prediction
-                if day < prediction_horizon - 1:  # Don't update on last iteration
-                    # Shift sequence one step forward
-                    current_sequence = np.roll(current_sequence, -1, axis=1)
-
-                    # Create new features for the predicted day
-                    # This is simplified - you'd need to predict other features too
-                    new_features = np.zeros(self.n_features)
-                    new_features[5] = pred  # Assuming 'Returns' is at index 5
-
-                    # Replace the last time step with new predicted features
-                    current_sequence[0, -1, :] = new_features
-
-            # Calculate view: mean of multi-horizon predictions
-            expected_return = np.mean(predictions)
-            view_uncertainty = np.std(predictions) if len(predictions) > 1 else 0.01
-
+            mc_preds = predict_mc(self.models[ticker], X_latest_scaled, n_samples=20)
+            expected_return = np.mean(mc_preds)
+            view_uncertainty = max(np.std(mc_preds), 0.001)
             views[ticker] = expected_return
             view_uncertainties[ticker] = max(view_uncertainty, 0.001)  # Minimum uncertainty
 
