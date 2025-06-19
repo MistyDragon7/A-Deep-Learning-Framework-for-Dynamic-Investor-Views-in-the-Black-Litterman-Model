@@ -356,7 +356,7 @@ class PortfolioBacktester:
                 for asset, weight in top_weights.items():
                     print(f"{asset}: {weight:.2%}")
 
-    def plot_performance_comparison(self, save_path=None, show=True):
+    def plot_performance_comparison(self, save_path=None, show=False):
         """Plot performance comparison charts and optionally save to file"""
         if not self.results:
             print("No results to plot.")

@@ -1,1 +1,2 @@
-cnn_bilstm/
+.venv/
+pyrightconfig.json
