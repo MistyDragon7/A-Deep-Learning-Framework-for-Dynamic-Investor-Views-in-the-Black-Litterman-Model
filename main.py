@@ -21,7 +21,6 @@ results = backtester.run_comprehensive_backtest(
     epochs=25,
     batch_size=32,
     prediction_horizon=5,
-    risk_aversion=3.0,
     tau=0.025,
     output_dir="results",
     use_frozen_data=True,
@@ -33,7 +32,7 @@ print("Saving performance comparison chart...")
 plt.savefig("performance_comparison.png", dpi=300, bbox_inches='tight')
 print("Saved as performance_comparison.png")
 
-# Optional: Save summary metrics to CSV
+# Save summary CSV
 import pandas as pd
 summary = []
 for backtest_type, res in results.items():
@@ -55,16 +54,14 @@ for backtest_type, res in results.items():
 summary_df = pd.DataFrame(summary)
 summary_df.to_csv("backtest_summary.csv", index=False)
 print("Saved summary metrics to backtest_summary.csv")
-import shutil
-import os
+
+# Zip output
+import shutil, os
 output_dir = "results"
 zip_path = f"{output_dir}.zip"
 
-# Remove existing zip if any
 if os.path.exists(zip_path):
     os.remove(zip_path)
-
-# Create zip archive
 shutil.make_archive(output_dir, 'zip', output_dir)
 
 print(f"✅ Zipped all output to: {zip_path}")
