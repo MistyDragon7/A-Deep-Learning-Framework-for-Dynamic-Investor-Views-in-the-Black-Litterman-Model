@@ -166,8 +166,8 @@ class BlackLittermanOptimizer:
                  return optimal_weights, bl_returns, bl_cov
 
 
-            bl_returns_array = np.dot(np.linalg.inv(M1), M2)
-            bl_returns = pd.Series(bl_returns_array.flatten(), index=self.assets)
+            bl_returns = np.dot(np.linalg.inv(M1), M2)
+            bl_returns = pd.Series(bl_returns, index=self.assets)
 
             # Calculate new covariance matrix
             bl_cov = np.linalg.inv(M1)

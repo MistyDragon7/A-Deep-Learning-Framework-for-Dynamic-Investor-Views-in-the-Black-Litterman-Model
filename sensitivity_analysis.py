@@ -1,24 +1,27 @@
+import itertools
 import pandas as pd
+from portfolio_backtester import PortfolioBacktester
+import os
 import seaborn as sns
 import matplotlib.pyplot as plt
-import os
-from portfolio_backtester import PortfolioBacktester
 
-# Define Nifty 50 subset (can expand)
+# Nifty 50 stock list (same as in main.py)
 nifty_50_stocks = [
     "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"
 ]
 
-# Only vary tau
-tau_list = [0.005, 0.01, 0.025, 0.05, 0.1]
+# Define parameter grid
+# risk_aversion_list = [1.0, 2.0, 3.0, 5.0, 10.0]
+tau_list = [0.01, 0.025, 0.05]
 
+# Store sensitivity results
 results = []
 
-for tau in tau_list:
-    print(f"\n🔍 Testing tau = {tau} (λ is dynamically estimated)")
+for  tau in tau_list:
+    print(f"\n🔍 Testing tau={tau}")
     backtester = PortfolioBacktester(stock_list=nifty_50_stocks)
 
-    output_dir = f"results/sensitivity_tau_{tau}"
+    output_dir = f"results/sensitivity_t{tau}"
     os.makedirs(output_dir, exist_ok=True)
 
     try:
@@ -45,29 +48,26 @@ for tau in tau_list:
             })
 
     except Exception as e:
-        print(f"❌ Failed for tau = {tau}: {e}")
+        print(f"❌ Failed for tau={tau}: {e}")
 
-# Save results
+# Save results to CSV
 df = pd.DataFrame(results)
-df.to_csv("sensitivity_tau_results.csv", index=False)
-print("\n✅ Saved tau sensitivity results to 'sensitivity_tau_results.csv'")
+df.to_csv("sensitivity_results.csv", index=False)
+print("\n✅ Saved sensitivity analysis results to 'sensitivity_results.csv'")
 
-# Plot results
+# Plot heatmaps
 if not df.empty:
-    plt.figure(figsize=(10, 5))
-    sns.lineplot(x="tau", y="sharpe_ratio", data=df, marker="o")
-    plt.title("Sensitivity of Sharpe Ratio to Tau (λ dynamically estimated)")
-    plt.xlabel("Tau")
-    plt.ylabel("Sharpe Ratio")
-    plt.grid(True)
-    plt.savefig("sharpe_ratio_tau_sensitivity.png", dpi=300, bbox_inches='tight')
+    pivot_sharpe = df.pivot(columns="tau", values="sharpe_ratio", index=df.index)
+    pivot_return = df.pivot(columns="tau", values="annualized_return", index=df.index)
+
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(pivot_sharpe, annot=True, fmt=".2f", cmap="coolwarm")
+    plt.title("Sharpe Ratio Sensitivity")
+    plt.savefig("sharpe_ratio_heatmap.png", dpi=300, bbox_inches='tight')
     plt.show()
 
-    plt.figure(figsize=(10, 5))
-    sns.lineplot(x="tau", y="annualized_return", data=df, marker="o")
-    plt.title("Sensitivity of Annualized Return to Tau (λ dynamically estimated)")
-    plt.xlabel("Tau")
-    plt.ylabel("Annualized Return")
-    plt.grid(True)
-    plt.savefig("annualized_return_tau_sensitivity.png", dpi=300, bbox_inches='tight')
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(pivot_return, annot=True, fmt=".2%", cmap="viridis")
+    plt.title("Annualized Return Sensitivity")
+    plt.savefig("annualized_return_heatmap.png", dpi=300, bbox_inches='tight')
     plt.show()
