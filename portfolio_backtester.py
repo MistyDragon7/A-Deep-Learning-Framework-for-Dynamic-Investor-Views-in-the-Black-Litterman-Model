@@ -19,7 +19,7 @@ def save_frozen_data(fetcher, path="data/frozen_data.pkl"):
             "stock_data": fetcher.stock_data,
             "market_caps": fetcher.market_caps
         }, f)
-    print(f"  Saved frozen stock data to {path}")
+    print(f"✅ Saved frozen stock data to {path}")
 
 def load_frozen_data(fetcher, path="frozen_data.pkl"):
     with open(path, "rb") as f:
@@ -27,7 +27,7 @@ def load_frozen_data(fetcher, path="frozen_data.pkl"):
         fetcher.stock_data = frozen["stock_data"]
         fetcher.market_caps = frozen["market_caps"]
         fetcher.stock_list = list(fetcher.stock_data.keys())
-    print(f"  Loaded frozen stock data from {path}")
+    print(f"✅ Loaded frozen stock data from {path}")
 class PortfolioBacktester:
     """
     Comprehensive backtesting system for Black-Litterman CNN-BiLSTM strategy
@@ -330,7 +330,7 @@ class PortfolioBacktester:
             nifty_perf = results['nifty_performance']
 
             if portfolio_perf:
-                print(f"\n  PORTFOLIO PERFORMANCE:")
+                print(f"\n📊 PORTFOLIO PERFORMANCE:")
                 print(f"Total Return: {portfolio_perf['total_return']:.2%}")
                 print(f"Annualized Return: {portfolio_perf['annualized_return']:.2%}")
                 print(f"Volatility: {portfolio_perf['volatility']:.2%}")
@@ -338,7 +338,7 @@ class PortfolioBacktester:
                 print(f"Max Drawdown: {portfolio_perf['max_drawdown']:.2%}")
 
             if nifty_perf:
-                print(f"\n  NIFTY 50 BENCHMARK:")
+                print(f"\n📈 NIFTY 50 BENCHMARK:")
                 print(f"Total Return: {nifty_perf['total_return']:.2%}")
                 print(f"Annualized Return: {nifty_perf['annualized_return']:.2%}")
                 print(f"Volatility: {nifty_perf['volatility']:.2%}")
@@ -347,12 +347,12 @@ class PortfolioBacktester:
 
                 if portfolio_perf:
                     excess_return = portfolio_perf['annualized_return'] - nifty_perf['annualized_return']
-                    print(f"\n  EXCESS RETURN: {excess_return:.2%}")
+                    print(f"\n🎯 EXCESS RETURN: {excess_return:.2%}")
 
             # Display top portfolio weights
             if 'optimal_weights' in results and not results['optimal_weights'].empty:
                 top_weights = results['optimal_weights'].sort_values(ascending=False).head(10)
-                print(f"\n  TOP 10 PORTFOLIO WEIGHTS:")
+                print(f"\n💼 TOP 10 PORTFOLIO WEIGHTS:")
                 for asset, weight in top_weights.items():
                     print(f"{asset}: {weight:.2%}")
 
@@ -379,8 +379,8 @@ class PortfolioBacktester:
             nifty_perf = results['nifty_performance']
 
             if portfolio_perf and nifty_perf:
-                portfolio_cum_returns = portfolio_perf['cumulative_value']
-                nifty_cum_returns = nifty_perf['cumulative_value']
+                portfolio_cum_returns = portfolio_perf['cumulative_returns']
+                nifty_cum_returns = nifty_perf['cumulative_returns']
 
                 # Ensure datetime index and normalize for alignment
                 portfolio_cum_returns.index = pd.to_datetime(portfolio_cum_returns.index).tz_localize(None).normalize().sort_values()
@@ -398,9 +398,9 @@ class PortfolioBacktester:
                             nifty_cum_returns.loc[common_dates],
                             label='Nifty 50',
                             color=colors[1], linewidth=2)
-                    ax.set_title(f'{type_name} - Cumulative Value')
+                    ax.set_title(f'{type_name} - Cumulative Returns')
                 else:
-                    print(f" ! No common dates for {type_name}. Plotting individually.")
+                    print(f"⚠️ No common dates for {type_name}. Plotting individually.")
 
                     ax.plot(portfolio_cum_returns, label='BL CNN-BiLSTM Strategy', color=colors[0], linewidth=2)
                     ax.plot(nifty_cum_returns, label='Nifty 50', color=colors[1], linewidth=2)
@@ -412,7 +412,7 @@ class PortfolioBacktester:
                 ax.grid(True, alpha=0.3)
 
             else:
-                print(f"Missing data for {type_name}. Skipping plot.")
+                print(f"⚠️ Missing data for {type_name}. Skipping plot.")
                 ax.set_title(f'{type_name} - No Data')
                 ax.axis('off')
 
@@ -420,7 +420,7 @@ class PortfolioBacktester:
 
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"Saved performance comparison to {save_path}")
+            print(f"✅ Saved performance comparison to {save_path}")
 
         if show:
             plt.show()
@@ -462,33 +462,33 @@ class PortfolioBacktester:
             weights = res.get("optimal_weights", pd.Series())
             if not weights.empty:
                 weights.to_csv(os.path.join(output_dir, f"weights_{suffix}.csv"))
-                print(f"  Saved weights to weights_{suffix}.csv")
+                print(f"✅ Saved weights to weights_{suffix}.csv")
 
             # Save views
             views = res.get("views", {})
             if views:
                 pd.Series(views).to_csv(os.path.join(output_dir, f"views_{suffix}.csv"))
-                print(f"  Saved views to views_{suffix}.csv")
+                print(f"✅ Saved views to views_{suffix}.csv")
 
             # Save uncertainties
             view_unc = res.get("view_uncertainties", {})
             if view_unc:
                 pd.Series(view_unc).to_csv(os.path.join(output_dir, f"view_uncertainties_{suffix}.csv"))
-                print(f"  Saved view uncertainties to view_uncertainties_{suffix}.csv")
+                print(f"✅ Saved view uncertainties to view_uncertainties_{suffix}.csv")
 
             # Save cumulative returns
             cumret = portfolio.get("cumulative_returns")
             if isinstance(cumret, pd.Series) and not cumret.empty:
                 cumret.to_csv(os.path.join(output_dir, f"cumulative_returns_{suffix}.csv"))
-                print(f"  Saved cumulative returns to cumulative_returns_{suffix}.csv")
+                print(f"✅ Saved cumulative returns to cumulative_returns_{suffix}.csv")
 
         # Save summary table
         if summary_rows:
             df = pd.DataFrame(summary_rows)
             df.to_csv(os.path.join(output_dir, metrics_path), index=False)
-            print(f"Saved summary to {metrics_path}")
+            print(f"✅ Saved summary to {metrics_path}")
         else:
-            print(" ! No results to summarize.")
+            print("⚠️ No results to summarize.")
 
     def run_comprehensive_backtest(self, save_plot_path=None, output_dir="./", use_frozen_data=True, frozen_data_path="data/frozen_data.pkl", **kwargs):
         """Run both types of backtesting and save all results"""
