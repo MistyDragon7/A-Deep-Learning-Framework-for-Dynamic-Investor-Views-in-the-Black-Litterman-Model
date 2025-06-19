@@ -363,8 +363,8 @@ class PortfolioBacktester:
                 nifty_cum_returns = nifty_perf['cumulative_returns']
 
                 # Ensure datetime index and normalize for alignment
-                portfolio_cum_returns.index = pd.to_datetime(portfolio_cum_returns.index).normalize()
-                nifty_cum_returns.index = pd.to_datetime(nifty_cum_returns.index).normalize()
+                portfolio_cum_returns.index = pd.to_datetime(portfolio_cum_returns.index).tz_localize(None).normalize().sort_values()
+                nifty_cum_returns.index = pd.to_datetime(nifty_cum_returns.index).tz_localize(None).normalize().sort_values()
 
                 # Intersect common dates
                 common_dates = portfolio_cum_returns.index.intersection(nifty_cum_returns.index)

@@ -53,3 +53,16 @@ for backtest_type, res in results.items():
 summary_df = pd.DataFrame(summary)
 summary_df.to_csv("backtest_summary.csv", index=False)
 print("Saved summary metrics to backtest_summary.csv")
+import shutil
+import os
+output_dir = "results"
+zip_path = f"{output_dir}.zip"
+
+# Remove existing zip if any
+if os.path.exists(zip_path):
+    os.remove(zip_path)
+
+# Create zip archive
+shutil.make_archive(output_dir, 'zip', output_dir)
+
+print(f"✅ Zipped all output to: {zip_path}")
