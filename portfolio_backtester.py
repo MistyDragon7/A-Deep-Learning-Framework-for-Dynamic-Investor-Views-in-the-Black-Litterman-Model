@@ -159,11 +159,11 @@ class PortfolioBacktester:
             'nifty_performance': nifty_performance,
             'optimal_weights': optimal_weights,
             'views': views,
+            'view_uncertainties': view_uncertainties,  # <-- ADD THIS
             'period': f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
             'training_period': 'Full 5 years',
             'testing_period': 'Same as training (Full 5 years)'
         }
-
         return self.results['type_1']
 
     def backtest_type_2_out_of_sample(self, sequence_length=30, epochs=30, batch_size=32,
@@ -282,11 +282,11 @@ class PortfolioBacktester:
             'nifty_performance': nifty_performance,
             'optimal_weights': optimal_weights,
             'views': views,
+            'view_uncertainties': view_uncertainties,  # <-- ADD THIS
             'split_date': split_date,
             'training_period': f"{full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}",
             'testing_period': f"{test_start_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')}"
         }
-
         return self.results['type_2']
 
     def display_results(self):
@@ -470,15 +470,30 @@ class PortfolioBacktester:
         else:
             print("⚠️ No results to summarize.")
 
-    def run_comprehensive_backtest(self, save_plot_path=None, **kwargs):
-        """Run both types of backtesting"""
+    def run_comprehensive_backtest(self, save_plot_path=None, output_dir="./", **kwargs):
+        """Run both types of backtesting and save all results"""
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
         print("Starting Comprehensive Backtesting...")
 
-        self.backtest_type_1_full_training(**kwargs)
-        self.backtest_type_2_out_of_sample(**kwargs)
+        # Run both backtests (output_dir is not passed to them)
+        result1 = self.backtest_type_1_full_training(**kwargs)
+        result2 = self.backtest_type_2_out_of_sample(**kwargs)
 
+        # Inject view uncertainties for saving
+        if result1:
+            self.results['type_1']['view_uncertainties'] = result1.get('view_uncertainties', {})
+        if result2:
+            self.results['type_2']['view_uncertainties'] = result2.get('view_uncertainties', {})
+
+        # Show metrics
         self.display_results()
-        self.plot_performance_comparison(save_path=save_plot_path, show=True)
+
+        # Save plot
+        self.plot_performance_comparison(save_path=save_plot_path or os.path.join(output_dir, "performance_comparison.png"))
+
+        # Save all files
         self.save_all_results(output_dir=output_dir)
 
         return self.results

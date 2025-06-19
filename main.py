@@ -23,7 +23,6 @@ backtester.run_comprehensive_backtest(
     prediction_horizon=5,
     risk_aversion=3.0,
     tau=0.025,
-    save_plot_path="results/performance_comparison.png",
     output_dir="results"
 )
 
