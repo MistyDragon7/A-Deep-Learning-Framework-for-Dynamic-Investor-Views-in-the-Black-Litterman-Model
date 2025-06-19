@@ -86,7 +86,7 @@ class PortfolioBacktester:
         }
 
     def backtest_type_1_full_training(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
-                                     prediction_horizon=5, tau=0.025):
+                                     prediction_horizon=5, risk_aversion=3.0, tau=0.025):
         """
         Backtesting Type 1: Train on full 5 years, backtest on same period
         """
@@ -132,13 +132,20 @@ class PortfolioBacktester:
         )
 
         # Optimize portfolio
+
+        # Align views with available tickers in returns_matrix
+        valid_tickers = returns_matrix.columns
+        views = {k: v for k, v in views.items() if k in valid_tickers}
+        view_uncertainties = {k: v for k, v in view_uncertainties.items() if k in valid_tickers}
+        print(f"✔ Optimizing using {len(views)} views and {len(valid_tickers)} available tickers")
+        if len(views) < 2:
+            print("⚠️ Skipping optimization: fewer than 2 valid investor views.")
+            return None
+
         bl_optimizer = BlackLittermanOptimizer(
             returns_matrix, fetcher.market_caps, risk_free_rate=0.06
         )
         # Estimate λ dynamically using NIFTY returns
-        # Calculate performance over full period
-        start_date = returns_matrix.index[0]
-        end_date = returns_matrix.index[-1]
         nifty_returns = self.fetch_nifty_data(start_date, end_date)
         if nifty_returns.empty:
             raise ValueError("Unable to fetch NIFTY data for λ computation")
@@ -147,6 +154,11 @@ class PortfolioBacktester:
         optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
             views, view_uncertainties, risk_aversion=lambda_dynamic, tau=tau
         )
+
+        # Calculate performance over full period
+        start_date = returns_matrix.index[0]
+        end_date = returns_matrix.index[-1]
+
         portfolio_performance = self.calculate_portfolio_performance(
             optimal_weights, returns_matrix, start_date, end_date
         )
@@ -189,7 +201,7 @@ class PortfolioBacktester:
         return self.results['type_1']
 
     def backtest_type_2_out_of_sample(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
-                                     prediction_horizon=5, tau=0.025):
+                                     prediction_horizon=5, risk_aversion=3.0, tau=0.025):
         """
         Backtesting Type 2: Train on 3 years, test on future 2 years
         """
@@ -258,14 +270,21 @@ class PortfolioBacktester:
             training_stock_data, prediction_horizon
         )
 
-        # Optimize portfolio using training data
+        # Optimize portfolio
+
+        # Align views with available tickers in returns_matrix
+        valid_tickers = returns_matrix.columns
+        views = {k: v for k, v in views.items() if k in valid_tickers}
+        view_uncertainties = {k: v for k, v in view_uncertainties.items() if k in valid_tickers}
+        print(f"✔ Optimizing using {len(views)} views and {len(valid_tickers)} available tickers")
+        if len(views) < 2:
+            print("⚠️ Skipping optimization: fewer than 2 valid investor views.")
+            return None
+ using training data
         bl_optimizer = BlackLittermanOptimizer(
             training_returns_matrix, training_fetcher.market_caps, risk_free_rate=0.06
         )
         # Estimate λ dynamically using NIFTY returns
-        start_date = returns_matrix.index[0] if 'returns_matrix' in locals() else full_returns_matrix.index[0]
-        end_date = returns_matrix.index[-1] if 'returns_matrix' in locals() else full_returns_matrix.index[-1]
-
         nifty_returns = self.fetch_nifty_data(start_date, end_date)
         if nifty_returns.empty:
             raise ValueError("Unable to fetch NIFTY data for λ computation")
