@@ -135,9 +135,14 @@ class PortfolioBacktester:
         bl_optimizer = BlackLittermanOptimizer(
             returns_matrix, fetcher.market_caps, risk_free_rate=0.06
         )
+        # Estimate λ dynamically using NIFTY returns
+        nifty_returns = self.fetch_nifty_data(start_date, end_date)
+        if nifty_returns.empty:
+            raise ValueError("Unable to fetch NIFTY data for λ computation")
 
+        lambda_dynamic = bl_optimizer.compute_dynamic_risk_aversion(nifty_returns)
         optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
-            views, view_uncertainties, risk_aversion, tau
+            views, view_uncertainties, risk_aversion=lambda_dynamic, tau=tau
         )
 
         # Calculate performance over full period
@@ -259,9 +264,14 @@ class PortfolioBacktester:
         bl_optimizer = BlackLittermanOptimizer(
             training_returns_matrix, training_fetcher.market_caps, risk_free_rate=0.06
         )
+        # Estimate λ dynamically using NIFTY returns
+        nifty_returns = self.fetch_nifty_data(start_date, end_date)
+        if nifty_returns.empty:
+            raise ValueError("Unable to fetch NIFTY data for λ computation")
 
+        lambda_dynamic = bl_optimizer.compute_dynamic_risk_aversion(nifty_returns)
         optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
-            views, view_uncertainties, risk_aversion, tau
+            views, view_uncertainties, risk_aversion=lambda_dynamic, tau=tau
         )
 
         # Test portfolio performance on out-of-sample data (last 2 years)
