@@ -131,7 +131,7 @@ class PortfolioBacktester:
 
         # Get Nifty benchmark performance
         nifty_returns = self.fetch_nifty_data(start_date, end_date)
-        if isinstance(nifty_returns, pd.DataFrame):
+        if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
             nifty_returns = nifty_returns['Close'].pct_change().dropna()
         nifty_performance = None
 
@@ -254,7 +254,7 @@ class PortfolioBacktester:
 
         # Get Nifty benchmark performance for test period
         nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
-        if isinstance(nifty_returns, pd.DataFrame):
+        if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
             nifty_returns = nifty_returns['Close'].pct_change().dropna()
         nifty_performance = None
 
