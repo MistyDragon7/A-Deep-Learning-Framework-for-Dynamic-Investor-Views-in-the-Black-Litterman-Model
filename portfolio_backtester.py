@@ -9,7 +9,23 @@ from stock_data_fetcher import StockDataFetcher
 from views_generator import CNNBiLSTMViewsGenerator
 import warnings
 warnings.filterwarnings('ignore')
+import pickle
 
+def save_frozen_data(fetcher, path="frozen_data.pkl"):
+    with open(path, "wb") as f:
+        pickle.dump({
+            "stock_data": fetcher.stock_data,
+            "market_caps": fetcher.market_caps
+        }, f)
+    print(f"✅ Saved frozen stock data to {path}")
+
+def load_frozen_data(fetcher, path="frozen_data.pkl"):
+    with open(path, "rb") as f:
+        frozen = pickle.load(f)
+        fetcher.stock_data = frozen["stock_data"]
+        fetcher.market_caps = frozen["market_caps"]
+        fetcher.stock_list = list(fetcher.stock_data.keys())
+    print(f"✅ Loaded frozen stock data from {path}")
 class PortfolioBacktester:
     """
     Comprehensive backtesting system for Black-Litterman CNN-BiLSTM strategy
