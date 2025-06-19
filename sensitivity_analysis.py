@@ -373,7 +373,7 @@ def run_comprehensive_tau_sensitivity():
         'BPCL.NS', 'BAJAJ-AUTO.NS', 'TATASTEEL.NS', 'HEROMOTOCO.NS', 'ADANIPORTS.NS'
     ]
 
-    tau_range = np.arange(0.005, 0.051, 0.005)  # Fine-grained
+    tau_range = np.arange(0.005, 0.101, 0.005)  # Fine-grained
 
     print(f"\n{'='*60}")
     print("Running tau sensitivity analysis")
