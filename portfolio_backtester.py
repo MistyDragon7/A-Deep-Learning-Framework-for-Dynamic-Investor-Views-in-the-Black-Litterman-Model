@@ -11,7 +11,9 @@ import warnings
 warnings.filterwarnings('ignore')
 import pickle
 
-def save_frozen_data(fetcher, path="frozen_data.pkl"):
+def save_frozen_data(fetcher, path="data/frozen_data.pkl"):
+    import os
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump({
             "stock_data": fetcher.stock_data,
