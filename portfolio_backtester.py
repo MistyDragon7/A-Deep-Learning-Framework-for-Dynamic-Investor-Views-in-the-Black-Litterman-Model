@@ -132,27 +132,12 @@ class PortfolioBacktester:
         )
 
         # Optimize portfolio
-
-        # Align views with available tickers in returns_matrix
-        valid_tickers = returns_matrix.columns
-        views = {k: v for k, v in views.items() if k in valid_tickers}
-        view_uncertainties = {k: v for k, v in view_uncertainties.items() if k in valid_tickers}
-        print(f"✔ Optimizing using {len(views)} views and {len(valid_tickers)} available tickers")
-        if len(views) < 2:
-            print("⚠️ Skipping optimization: fewer than 2 valid investor views.")
-            return None
-
         bl_optimizer = BlackLittermanOptimizer(
             returns_matrix, fetcher.market_caps, risk_free_rate=0.06
         )
-        # Estimate λ dynamically using NIFTY returns
-        nifty_returns = self.fetch_nifty_data(start_date, end_date)
-        if nifty_returns.empty:
-            raise ValueError("Unable to fetch NIFTY data for λ computation")
 
-        lambda_dynamic = bl_optimizer.compute_dynamic_risk_aversion(nifty_returns)
         optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
-            views, view_uncertainties, risk_aversion=lambda_dynamic, tau=tau
+            views, view_uncertainties, risk_aversion, tau
         )
 
         # Calculate performance over full period
@@ -201,7 +186,7 @@ class PortfolioBacktester:
         return self.results['type_1']
 
     def backtest_type_2_out_of_sample(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
-                                      prediction_horizon=5, tau=0.025):
+                                     prediction_horizon=5, risk_aversion=3.0, tau=0.025):
         """
         Backtesting Type 2: Train on 3 years, test on future 2 years
         """
@@ -209,10 +194,12 @@ class PortfolioBacktester:
         print("BACKTESTING TYPE 2: OUT-OF-SAMPLE TESTING")
         print("=" * 80)
         if fetcher is None:
-            raise ValueError("This version of backtest_type_2_out_of_sample requires a fetcher to be passed.")
-
+            raise ValueError("This version of backtest_type_1_full_training requires a fetcher to be passed.")
+        # Fetch 5 years of data
+        # fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
         stock_data = fetcher.fetch_all_stocks()
 
+        # Filter stocks with sufficient data
         sufficient_data_stocks = {
             ticker: df for ticker, df in stock_data.items()
             if len(df) > sequence_length + prediction_horizon + 2
@@ -226,17 +213,20 @@ class PortfolioBacktester:
         fetcher.stock_list = list(sufficient_data_stocks.keys())
         fetcher.add_technical_indicators()
 
+        # Split data: 3 years training, 2 years testing
         full_returns_matrix = fetcher.create_returns_matrix()
         if full_returns_matrix.empty:
             print("Empty returns matrix for Type 2 backtesting")
             return None
 
+        # Calculate split point (60% for training, 40% for testing)
         split_point = int(len(full_returns_matrix) * 0.6)
         split_date = full_returns_matrix.index[split_point]
 
         print(f"Training period: {full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}")
         print(f"Testing period: {split_date.strftime('%Y-%m-%d')} to {full_returns_matrix.index[-1].strftime('%Y-%m-%d')}")
 
+        # Create training dataset (first 3 years)
         training_stock_data = {}
         for ticker, df in fetcher.stock_data.items():
             training_data = df.loc[:split_date].copy()
@@ -247,10 +237,12 @@ class PortfolioBacktester:
             print("Insufficient training data for Type 2 backtesting")
             return None
 
+        # Create training returns matrix
         training_fetcher = StockDataFetcher(list(training_stock_data.keys()))
         training_fetcher.stock_data = training_stock_data
         training_returns_matrix = training_fetcher.create_returns_matrix()
 
+        # Train models on training data only
         views_generator = CNNBiLSTMViewsGenerator(len(training_stock_data), sequence_length)
         views_generator.train_all_models(training_stock_data, epochs=epochs, batch_size=batch_size)
 
@@ -258,44 +250,34 @@ class PortfolioBacktester:
             print("No models trained for Type 2 backtesting")
             return None
 
+        # Generate views using training data
         views, view_uncertainties = views_generator.generate_investor_views(
             training_stock_data, prediction_horizon
         )
 
-        # Align views with available tickers in training_returns_matrix
-        valid_tickers = training_returns_matrix.columns
-        views = {k: v for k, v in views.items() if k in valid_tickers}
-        view_uncertainties = {k: v for k, v in view_uncertainties.items() if k in valid_tickers}
-        print(f"✔ Optimizing using {len(views)} views and {len(valid_tickers)} available tickers")
-        if len(views) < 2:
-            print("⚠️ Skipping optimization: fewer than 2 valid investor views.")
-            return None
-
+        # Optimize portfolio using training data
         bl_optimizer = BlackLittermanOptimizer(
             training_returns_matrix, training_fetcher.market_caps, risk_free_rate=0.06
         )
 
+        optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
+            views, view_uncertainties, risk_aversion, tau
+        )
+
+        # Test portfolio performance on out-of-sample data (last 2 years)
         test_start_date = split_date
         test_end_date = full_returns_matrix.index[-1]
-
-        nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
-        if nifty_returns.empty:
-            raise ValueError("Unable to fetch NIFTY data for λ computation")
-
-        lambda_dynamic = bl_optimizer.compute_dynamic_risk_aversion(nifty_returns)
-        optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
-            views, view_uncertainties, risk_aversion=lambda_dynamic, tau=tau
-        )
 
         portfolio_performance = self.calculate_portfolio_performance(
             optimal_weights, full_returns_matrix, test_start_date, test_end_date
         )
 
+        # Get Nifty benchmark performance for test period
         nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
         if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
             nifty_returns = nifty_returns['Close'].pct_change().dropna()
-
         nifty_performance = None
+
         if not nifty_returns.empty:
             nifty_total_return = float((1 + nifty_returns).prod() - 1)
             nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
@@ -320,7 +302,7 @@ class PortfolioBacktester:
             'nifty_performance': nifty_performance,
             'optimal_weights': optimal_weights,
             'views': views,
-            'view_uncertainties': view_uncertainties,
+            'view_uncertainties': view_uncertainties,  # <-- ADD THIS
             'split_date': split_date,
             'training_period': f"{full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}",
             'testing_period': f"{test_start_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')}"
@@ -374,7 +356,7 @@ class PortfolioBacktester:
                 for asset, weight in top_weights.items():
                     print(f"{asset}: {weight:.2%}")
 
-    def plot_performance_comparison(self, save_path=None, show=False):
+    def plot_performance_comparison(self, save_path=None, show=True):
         """Plot performance comparison charts and optionally save to file"""
         if not self.results:
             print("No results to plot.")

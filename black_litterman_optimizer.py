@@ -47,20 +47,6 @@ class BlackLittermanOptimizer:
 
         return pd.Series(weights, index=self.assets)
 
-    def compute_dynamic_risk_aversion(self, market_returns, risk_free_rate=0.06):
-        """
-        Computes implied risk aversion coefficient using:
-            lambda = (E[r] - r_f) / (w_mkt^T Σ w_mkt)
-        """
-        expected_return = market_returns.mean() * 252  # Annualized
-        excess_return = expected_return - risk_free_rate
-        market_variance = float(self.market_weights.T @ self.cov_matrix @ self.market_weights)
-
-        if market_variance <= 0:
-            raise ValueError("Market variance must be positive for risk aversion estimation.")
-
-        implied_lambda = excess_return / market_variance
-        return implied_lambda
     def calculate_implied_returns(self, risk_aversion=3.0):
         """Calculate implied equilibrium returns"""
         # π = λ * Σ * w_market
