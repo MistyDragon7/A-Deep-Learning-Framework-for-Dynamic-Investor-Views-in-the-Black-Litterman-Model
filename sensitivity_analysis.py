@@ -1,5 +1,5 @@
 from portfolio_backtester import PortfolioBacktester
-
+import numpy as np
 # Define the tau range
 tau_values = np.round(np.linspace(0.005, 0.100, 20), 4)
 
