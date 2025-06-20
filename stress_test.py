@@ -1,78 +1,88 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime
+from views_generator import CNNBiLSTMViewsGenerator
 from black_litterman_optimizer import BlackLittermanOptimizer
 from stock_data_fetcher import StockDataFetcher
-from views_generator import CNNBiLSTMViewsGenerator
-import os
 
-subset = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"]
-risk_free_rate = 0.06
-tau = 0.025
-output_dir = "stress_test_outputs"
-os.makedirs(output_dir, exist_ok=True)
+tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS"]
+shock_multipliers = {
+    "Baseline": 1.0,
+    "+20% Shock": 1.2,
+    "-20% Shock": 0.8,
+    "+50% Shock": 1.5,
+    "-50% Shock": 0.5
+}
+test_start = "2023-06-01"
+test_end = "2024-06-01"
 
-fetcher = StockDataFetcher(subset, period="5y", interval="1d")
+fetcher = StockDataFetcher(tickers, period="5y", interval="1d")
 fetcher.fetch_all_stocks()
 fetcher.add_technical_indicators()
-
 returns_matrix = fetcher.create_returns_matrix()
-market_caps = fetcher.market_caps
 
-views_generator = CNNBiLSTMViewsGenerator(n_stocks=len(subset))
-views_generator.train_all_models(fetcher.stock_data, epochs=0)
-base_views, base_uncertainties = views_generator.generate_investor_views(fetcher.stock_data)
+generator = CNNBiLSTMViewsGenerator(len(tickers), sequence_length=30)
+generator.train_all_models(fetcher.stock_data, epochs=1, batch_size=32)  # loads pre-trained
+views, uncertainties = generator.generate_investor_views(fetcher.stock_data, prediction_horizon=5)
 
-shock_scenarios = {
-    "Baseline": base_views,
-    "Bullish Shock": {k: v * 1.20 for k, v in base_views.items()},
-    "Bearish Shock": {k: v * 0.80 for k, v in base_views.items()},
-    "Single Asset Shock (RELIANCE)": {**base_views, "RELIANCE.NS": base_views["RELIANCE.NS"] * 1.50},
-    "Sector Downside (Tech)": {
-        **base_views,
-        "TCS.NS": base_views["TCS.NS"] * 0.7,
-        "INFY.NS": base_views["INFY.NS"] * 0.7
-    },
-}
+results = []
 
-weights_dict = {}
-sharpe_dict = {}
-returns_dict = {}
+for label, factor in shock_multipliers.items():
+    shocked_views = {k: v * factor for k, v in views.items()}
 
-for name, scenario_views in shock_scenarios.items():
-    bl = BlackLittermanOptimizer(returns_matrix, market_caps, risk_free_rate=risk_free_rate)
-    weights, _, _ = bl.black_litterman_optimization(scenario_views, base_uncertainties, tau=tau)
+    optimizer = BlackLittermanOptimizer(
+        returns_matrix=returns_matrix,
+        market_caps=fetcher.market_caps,
+        risk_free_rate=0.06
+    )
 
-    weights_dict[name] = weights
+    weights, _, _ = optimizer.black_litterman_optimization(
+        shocked_views,
+        uncertainties,
+        tau=0.025
+    )
 
-    aligned_weights = weights.reindex(returns_matrix.columns).fillna(0)
-    port_returns = (returns_matrix * aligned_weights).sum(axis=1)
+    ret_window = returns_matrix.loc[test_start:test_end]
+    if ret_window.empty:
+        print(f"⚠️ No return data in {test_start} to {test_end}")
+        continue
 
-    ann_return = (1 + port_returns.mean()) ** 252 - 1
-    ann_vol = port_returns.std() * np.sqrt(252)
-    sharpe = (ann_return - risk_free_rate) / ann_vol if ann_vol > 0 else 0
+    weights = weights.reindex(ret_window.columns).fillna(0)
+    weights = weights / weights.sum()
 
-    sharpe_dict[name] = sharpe
-    returns_dict[name] = ann_return
+    port_returns = (ret_window * weights).sum(axis=1)
+    total_ret = (1 + port_returns).prod() - 1
+    annual_ret = (1 + total_ret) ** (252 / len(port_returns)) - 1
+    volatility = port_returns.std() * np.sqrt(252)
+    sharpe = (annual_ret - 0.06) / volatility if volatility > 0 else 0
 
-df_weights = pd.DataFrame(weights_dict).T.fillna(0)
-df_sharpe = pd.Series(sharpe_dict, name="Sharpe Ratio")
-df_returns = pd.Series(returns_dict, name="Annualized Return")
+    results.append({
+        "Scenario": label,
+        "Annualized Return": annual_ret,
+        "Sharpe Ratio": sharpe
+    })
 
-df_weights.to_csv(f"{output_dir}/stress_weights.csv")
-df_sharpe.to_csv(f"{output_dir}/stress_sharpe.csv")
-df_returns.to_csv(f"{output_dir}/stress_returns.csv")
-print("✅ CSV files saved to:", output_dir)
+df = pd.DataFrame(results)
+df.to_csv("stress_test_summary.csv", index=False)
+print("✅ Saved to stress_test_summary.csv")
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-df_returns.sort_values(ascending=False).plot(kind='bar', ax=axes[0], color='navy', title="Annualized Returns")
-df_sharpe.sort_values(ascending=False).plot(kind='bar', ax=axes[1], color='darkgreen', title="Sharpe Ratios")
-for ax in axes:
-    ax.set_xlabel("Stress Scenario")
-    ax.set_ylabel("Metric Value")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=25)
-    ax.grid(True, alpha=0.3)
+plt.figure(figsize=(10, 5))
+plt.bar(df["Scenario"], df["Sharpe Ratio"], color='skyblue')
+plt.title("Stress Test: Sharpe Ratios")
+plt.ylabel("Sharpe Ratio")
+plt.xticks(rotation=15)
+plt.grid(axis="y", alpha=0.3)
 plt.tight_layout()
-plt.savefig(f"{output_dir}/stress_metrics_comparison.png", dpi=300)
+plt.savefig("stress_sharpe_chart.png")
 plt.show()
-print("✅ Charts saved as PNG")
+
+plt.figure(figsize=(10, 5))
+plt.bar(df["Scenario"], df["Annualized Return"], color='lightgreen')
+plt.title("Stress Test: Annualized Return")
+plt.ylabel("Return")
+plt.xticks(rotation=15)
+plt.grid(axis="y", alpha=0.3)
+plt.tight_layout()
+plt.savefig("stress_return_chart.png")
+plt.show()
