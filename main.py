@@ -36,9 +36,18 @@ print("Saved as performance_comparison.png")
 import pandas as pd
 summary = []
 for backtest_type, res in results.items():
-    label = "Full Training" if backtest_type == "type_1" else "Out-of-Sample"
-    p = res['portfolio_performance']
-    n = res['nifty_performance']
+    if backtest_type not in res:
+        continue
+
+    label = {
+        "type_1": "Full Training",
+        "type_2": "Out-of-Sample (Bi-weekly)",
+        "rolling": "Rolling Rebalance"
+    }.get(backtest_type, backtest_type)
+
+    p = res.get('portfolio_performance')
+    n = res.get('nifty_performance')
+
     if p and n:
         summary.append({
             "Backtest": label,
