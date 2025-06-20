@@ -86,7 +86,15 @@ class CNNBiLSTMViewsGenerator:
         output = Dense(1, activation='linear')(x)
 
         model = Model(inputs=inputs, outputs=output)
-        model.compile(optimizer=Adam(learning_rate=0.001), loss='mse', metrics=['mae'])
+        from tensorflow.keras.losses import MeanSquaredError
+        from tensorflow.keras.metrics import MeanAbsoluteError
+
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss=MeanSquaredError(),
+            metrics=[MeanAbsoluteError()]
+        )
+        
 
         return model
 
@@ -161,10 +169,12 @@ class CNNBiLSTMViewsGenerator:
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
 
         @tf.function
-        def predict_mc(model, x_input, n_samples=10):
+        def predict_mc_tf(model, x_input, n_samples=10):
             preds = tf.stack([model(x_input, training=True) for _ in range(n_samples)], axis=0)
             return tf.squeeze(preds, axis=-1).numpy()
-
+        def predict_mc(model, x_input, n_samples=10):
+            preds = predict_mc_tf(model, x_input, n_samples)
+            return preds.numpy()  # ✅ Safely outside tf.function
         views = {}
         view_uncertainties = {}
 
