@@ -16,49 +16,87 @@ class BlackLittermanOptimizer:
             self.mean_returns = pd.Series(0, index=self.assets)
             self.cov_matrix = pd.DataFrame(0, index=self.assets, columns=self.assets)
 
-        # ✅ Compute relative market weights based only on available assets
-        market_caps_subset = {
-            asset: self.market_caps.get(asset, 0)
-            for asset in self.assets
-            if self.market_caps.get(asset, 0) > 0
-        }
-
-        total_cap = sum(market_caps_subset.values())
-
-        if total_cap > 0:
-            self.market_weights = pd.Series({
-                asset: market_caps_subset.get(asset, 0) / total_cap
-                for asset in self.assets
-            }).fillna(0)
-        else:
-            print("⚠️ Warning: Market capitalizations missing for all assets. Using equal weights.")
-            self.market_weights = pd.Series([1 / len(self.assets)] * len(self.assets), index=self.assets)
-
+        # ✅ FIXED: Improved market weights calculation
+        self.market_weights = self.calculate_market_weights()
         self.dynamic_risk_aversion = self.compute_dynamic_risk_aversion()
 
     def calculate_market_weights(self):
-        total_market_cap = sum(self.market_caps.values())
-    
-        if total_market_cap <= 0 or not self.market_caps:
-            print("⚠️ Warning: Market capitalizations are missing or zero. Using equal weights.")
+        """Calculate market weights with proper debugging and fallback"""
+        print(f"🔍 Debug: Available assets: {self.assets}")
+        print(f"🔍 Debug: Market caps keys: {list(self.market_caps.keys()) if self.market_caps else 'Empty'}")
+        
+        # Check if market_caps is valid
+        if not self.market_caps or not isinstance(self.market_caps, dict):
+            print("⚠️ Warning: Market caps dictionary is empty or invalid. Using equal weights.")
             return pd.Series(1.0 / len(self.assets), index=self.assets) if self.assets else pd.Series()
-    
-        weights = {
-            asset: self.market_caps.get(asset, 0.0) / total_market_cap
-            for asset in self.assets
-        }
-        return pd.Series(weights, index=self.assets)
-
+        
+        # Filter market caps for available assets only
+        valid_market_caps = {}
+        for asset in self.assets:
+            market_cap = self.market_caps.get(asset, 0)
+            if market_cap > 0:
+                valid_market_caps[asset] = market_cap
+            else:
+                print(f"⚠️ Warning: Missing or zero market cap for {asset}")
+        
+        print(f"🔍 Debug: Valid market caps: {valid_market_caps}")
+        
+        # If no valid market caps found, use equal weights
+        if not valid_market_caps:
+            print("⚠️ Warning: No valid market capitalizations found. Using equal weights.")
+            return pd.Series(1.0 / len(self.assets), index=self.assets)
+        
+        # Calculate total market cap
+        total_market_cap = sum(valid_market_caps.values())
+        
+        if total_market_cap <= 0:
+            print("⚠️ Warning: Total market cap is zero or negative. Using equal weights.")
+            return pd.Series(1.0 / len(self.assets), index=self.assets)
+        
+        # Calculate market weights for all assets
+        weights = {}
+        for asset in self.assets:
+            if asset in valid_market_caps:
+                weights[asset] = valid_market_caps[asset] / total_market_cap
+            else:
+                # Assign minimal weight to assets without market cap data
+                weights[asset] = 0.001  # Small but non-zero weight
+        
+        # Normalize weights to ensure they sum to 1
+        weights_series = pd.Series(weights, index=self.assets)
+        weights_series = weights_series / weights_series.sum()
+        
+        print(f"✅ Market weights calculated successfully")
+        print(f"🔍 Debug: Top 5 weights: {weights_series.nlargest(5).to_dict()}")
+        
+        return weights_series
 
     def compute_dynamic_risk_aversion(self):
+        """Compute dynamic risk aversion with better error handling"""
         if self.mean_returns.empty or self.cov_matrix.empty or self.market_weights.empty:
+            print("⚠️ Using default risk aversion (3.0) due to missing data")
             return 3.0
+        
         try:
             expected_excess_return = self.mean_returns.mean()
             market_variance = float(self.market_weights.T @ self.cov_matrix @ self.market_weights)
+            
+            if market_variance <= 0:
+                print("⚠️ Market variance is zero or negative. Using default risk aversion.")
+                return 3.0
+            
             implied_lambda = expected_excess_return / market_variance
-            return implied_lambda if 0 < implied_lambda < 20 else 3.0
-        except:
+            
+            # Ensure reasonable bounds for risk aversion
+            if 0 < implied_lambda < 20:
+                print(f"✅ Dynamic risk aversion: {implied_lambda:.3f}")
+                return implied_lambda
+            else:
+                print(f"⚠️ Risk aversion out of bounds ({implied_lambda:.3f}). Using default (3.0)")
+                return 3.0
+                
+        except Exception as e:
+            print(f"⚠️ Error computing risk aversion: {e}. Using default (3.0)")
             return 3.0
 
     def calculate_implied_returns(self, risk_aversion=None):
