@@ -1,6 +1,14 @@
 from portfolio_backtester import PortfolioBacktester
 import matplotlib.pyplot as plt
+import tensorflow as tf
+import numpy as np
+import random
+import os
 
+SEED = 42
+os.environ['PYTHONHASHSEED'] = str(SEED)
+tf.keras.utils.set_random_seed(SEED)
+tf.config.experimental.enable_op_determinism()
 nifty_50_stocks = [
     "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
     "KOTAKBANK.NS", "LT.NS", "SBIN.NS", "AXISBANK.NS", "HINDUNILVR.NS",

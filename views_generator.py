@@ -173,8 +173,8 @@ class CNNBiLSTMViewsGenerator:
 
         def predict_mc(model, x_input, n_samples=10):
             x_repeated = tf.repeat(x_input, repeats=n_samples, axis=0)
-            preds = predict_mc_tf(model, x_repeated)
-            return preds.numpy()
+            preds = model(x_input, training=False)  # Dropout off
+            return tf.squeeze(preds, axis=-1).numpy()
         views = {}
         view_uncertainties = {}
 
