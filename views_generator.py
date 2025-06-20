@@ -158,7 +158,7 @@ class CNNBiLSTMViewsGenerator:
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
 
-        def predict_mc(model, x_input, n_samples=50):
+        def predict_mc(model, x_input, n_samples=10):
             preds = np.array([model(x_input, training=True).numpy().squeeze() for _ in range(n_samples)])
             return preds
 
