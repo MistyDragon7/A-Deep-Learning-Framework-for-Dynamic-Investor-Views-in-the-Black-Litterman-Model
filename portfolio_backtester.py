@@ -115,89 +115,6 @@ class PortfolioBacktester:
             'cumulative_returns': cumulative_returns
         }
 
-    def backtest_type_1_full_training(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
-                                         prediction_horizon=5, risk_aversion=None, tau=0.025):
-            print("=" * 80)
-            print("BACKTESTING TYPE 1: FULL TRAINING PERIOD")
-            print("=" * 80)
-
-            if fetcher is None:
-                raise ValueError("Fetcher must be passed explicitly.")
-
-            stock_data = fetcher.fetch_all_stocks()
-            sufficient_data_stocks = {
-                ticker: df for ticker, df in stock_data.items()
-                if len(df) > sequence_length + prediction_horizon + 2
-            }
-            if len(sufficient_data_stocks) < 2:
-                print("Insufficient stock data for Type 1 backtesting")
-                return None
-
-            fetcher.stock_data = sufficient_data_stocks
-            fetcher.stock_list = list(sufficient_data_stocks.keys())
-            fetcher.add_technical_indicators()
-            returns_matrix = fetcher.create_returns_matrix()
-
-            if returns_matrix.empty:
-                print("Empty returns matrix for Type 1 backtesting")
-                return None
-
-            views_generator = CNNBiLSTMViewsGenerator(len(fetcher.stock_data), sequence_length)
-            views_generator.train_all_models(fetcher.stock_data, epochs=epochs, batch_size=batch_size)
-
-            if not views_generator.models:
-                print("No models trained for Type 1 backtesting")
-                return None
-
-            views, view_uncertainties = views_generator.generate_investor_views(fetcher.stock_data, prediction_horizon)
-
-            bl_optimizer = BlackLittermanOptimizer(returns_matrix, fetcher.market_caps, risk_free_rate=0.06)
-
-            optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
-                views, view_uncertainties, risk_aversion=risk_aversion, tau=tau
-            )
-
-            start_date = returns_matrix.index[0]
-            end_date = returns_matrix.index[-1]
-
-            portfolio_performance = self.calculate_portfolio_performance(
-                optimal_weights, returns_matrix, start_date, end_date
-            )
-
-            nifty_returns = self.fetch_nifty_data(start_date, end_date)
-            if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
-                nifty_returns = nifty_returns['Close'].pct_change().dropna()
-
-            nifty_performance = None
-            if not nifty_returns.empty:
-                nifty_total_return = float(((1 + nifty_returns).prod() - 1))
-                nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
-                nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
-                nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
-                nifty_cumulative = (1 + nifty_returns).cumprod()
-                nifty_max_drawdown = float(((nifty_cumulative - nifty_cumulative.cummax()) / nifty_cumulative.cummax()).min())
-
-                nifty_performance = {
-                    'total_return': nifty_total_return,
-                    'annualized_return': nifty_annualized_return,
-                    'volatility': nifty_volatility,
-                    'sharpe_ratio': nifty_sharpe,
-                    'max_drawdown': nifty_max_drawdown,
-                    'cumulative_returns': nifty_cumulative
-                }
-
-            self.results['type_1'] = {
-                'portfolio_performance': portfolio_performance,
-                'nifty_performance': nifty_performance,
-                'optimal_weights': optimal_weights,
-                'views': views,
-                'view_uncertainties': view_uncertainties,
-                'period': f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
-                'training_period': 'Full 5 years',
-                'testing_period': 'Same as training (Full 5 years)'
-            }
-            return self.results['type_1']
-
     def backtest_type_2_out_of_sample(self, fetcher, **kwargs):
         import pandas as pd
         from views_generator import CNNBiLSTMViewsGenerator
@@ -215,7 +132,21 @@ class PortfolioBacktester:
         rebalance_interval = 10  # bi-weekly ~ 10 trading days
 
         views_generator = CNNBiLSTMViewsGenerator(n_stocks=len(fetcher.stock_list), sequence_length=sequence_length)
-        views_generator.train_all_models(fetcher.stock_data, epochs=25, batch_size=32, model_dir="models")
+
+        # ✅ Load models without retraining
+        model_dir = "saved_models"
+        for ticker in fetcher.stock_list:
+            model_path = os.path.join(model_dir, f"{ticker}.h5")
+            scaler_path = os.path.join(model_dir, f"{ticker}_scaler.pkl")
+            if os.path.exists(model_path) and os.path.exists(scaler_path):
+                try:
+                    from tensorflow.keras.models import load_model
+                    import joblib
+                    views_generator.models[ticker] = load_model(model_path)
+                    views_generator.scalers[ticker] = joblib.load(scaler_path)
+                    print(f"✓ Loaded saved model and scaler for {ticker}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load model for {ticker}: {e}")
 
         start_date = fetcher.get_common_start_date() + pd.Timedelta(days=sequence_length + prediction_horizon + 5)
         end_date = fetcher.get_common_end_date()
@@ -294,8 +225,7 @@ class PortfolioBacktester:
         self.results['type_2']['nifty_performance'] = nifty_perf
 
         print("\n✅ Out-of-Sample Backtest Completed.")
-        return self.results 
-
+        return self.results
 
 
     def display_results(self):
