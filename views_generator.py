@@ -16,8 +16,11 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+@tf.function(reduce_retracing=True)
+def predict_mc_tf(model, x_repeated):
+    return tf.squeeze(model(x_repeated, training=True), axis=-1)
 def mc_dropout(x, rate):
-    return Dropout(rate)(x, training=True)  # Keeps dropout active during inference
+    return Dropout(rate)(x)  # Keeps dropout active during inference
 
 class CNNBiLSTMViewsGenerator:
     """CNN-BiLSTM model to generate investor views for Black-Litterman"""
@@ -168,13 +171,10 @@ class CNNBiLSTMViewsGenerator:
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
 
-        @tf.function
-        def predict_mc_tf(model, x_input, n_samples=10):
-            preds = tf.stack([model(x_input, training=True) for _ in range(n_samples)], axis=0)
-            return tf.squeeze(preds, axis=-1).numpy()
         def predict_mc(model, x_input, n_samples=10):
-            preds = predict_mc_tf(model, x_input, n_samples)
-            return preds.numpy()  # ✅ Safely outside tf.function
+            x_repeated = tf.repeat(x_input, repeats=n_samples, axis=0)
+            preds = predict_mc_tf(model, x_repeated)
+            return preds.numpy()
         views = {}
         view_uncertainties = {}
 

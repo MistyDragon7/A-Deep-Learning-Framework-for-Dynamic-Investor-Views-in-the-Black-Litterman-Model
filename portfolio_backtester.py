@@ -489,7 +489,7 @@ class PortfolioBacktester:
         """Run both types of backtesting and save all results"""
         import os
         os.makedirs(output_dir, exist_ok=True)
-
+        result1 = None
         print("Starting Comprehensive Backtesting...")
 
         # Set up data
@@ -510,7 +510,7 @@ class PortfolioBacktester:
         result2 = self.backtest_type_2_out_of_sample(fetcher=fetcher, **kwargs)
 
         # Carry uncertainties to self.results
-        if result1:
+        if result1 is not None:
             self.results['type_1']['view_uncertainties'] = result1.get('view_uncertainties', {})
         if result2:
             self.results['type_2']['view_uncertainties'] = result2.get('view_uncertainties', {})
