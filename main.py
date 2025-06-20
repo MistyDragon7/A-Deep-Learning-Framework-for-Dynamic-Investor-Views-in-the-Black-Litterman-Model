@@ -1,9 +1,11 @@
-from portfolio_backtester import PortfolioBacktester
-import matplotlib.pyplot as plt
-import tensorflow as tf
-import numpy as np
-import random
 import os
+import random
+import numpy as np
+import tensorflow as tf
+import pandas as pd
+import matplotlib.pyplot as plt
+from portfolio_backtester import PortfolioBacktester
+import shutil
 
 SEED = 42
 os.environ['PYTHONHASHSEED'] = str(SEED)
@@ -35,50 +37,38 @@ results = backtester.run_comprehensive_backtest(
     frozen_data_path="data/frozen_data.pkl"
 )
 
-# Save performance plot
-print("Saving performance comparison chart...")
-plt.savefig("performance_comparison.png", dpi=300, bbox_inches='tight')
-print("Saved as performance_comparison.png")
+backtester.plot_weight_variance_over_time(
+    backtest_type='type_2',
+    top_n_assets=10,
+    save_path="results/weight_variance_plot.png"
+)
 
-# Save summary CSV
-import pandas as pd
 summary = []
-for backtest_type, res in results.items():
-    if backtest_type not in res:
-        continue
+res = results.get("type_2", {})
+p = res.get('portfolio_performance')
+n = res.get('nifty_performance')
 
-    label = {
-        "type_1": "Full Training",
-        "type_2": "Out-of-Sample (Bi-weekly)",
-        "rolling": "Rolling Rebalance"
-    }.get(backtest_type, backtest_type)
-
-    p = res.get('portfolio_performance')
-    n = res.get('nifty_performance')
-
-    if p and n:
-        summary.append({
-            "Backtest": label,
-            "Portfolio Return": p['annualized_return'],
-            "Portfolio Sharpe": p['sharpe_ratio'],
-            "Portfolio Volatility": p['volatility'],
-            "Nifty Return": n['annualized_return'],
-            "Nifty Sharpe": n['sharpe_ratio'],
-            "Nifty Volatility": n['volatility'],
-            "Excess Return": p['annualized_return'] - n['annualized_return']
-        })
+if p and n:
+    summary.append({
+        "Backtest": "Out-of-Sample (Bi-weekly)",
+        "Portfolio Return": p['annualized_return'],
+        "Portfolio Sharpe": p['sharpe_ratio'],
+        "Portfolio Volatility": p['volatility'],
+        "Nifty Return": n['annualized_return'],
+        "Nifty Sharpe": n['sharpe_ratio'],
+        "Nifty Volatility": n['volatility'],
+        "Excess Return": p['annualized_return'] - n['annualized_return']
+    })
 
 summary_df = pd.DataFrame(summary)
 summary_df.to_csv("backtest_summary.csv", index=False)
-print("Saved summary metrics to backtest_summary.csv")
+print("✅ Saved summary metrics to backtest_summary.csv")
 
-# Zip output
-import shutil, os
+# ✅ 7. Zip all output
 output_dir = "results"
 zip_path = f"{output_dir}.zip"
 
 if os.path.exists(zip_path):
     os.remove(zip_path)
 shutil.make_archive(output_dir, 'zip', output_dir)
-
 print(f"✅ Zipped all output to: {zip_path}")

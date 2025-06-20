@@ -15,6 +15,13 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+import random
+SEED = 42
+os.environ['PYTHONHASHSEED'] = str(SEED)
+random.seed(SEED)
+np.random.seed(SEED)
+tf.keras.utils.set_random_seed(SEED)
+tf.config.experimental.enable_op_determinism()  # Only available in TF 2.12+
 
 @tf.function(reduce_retracing=True)
 def predict_mc_tf(model, x_repeated):
@@ -171,10 +178,10 @@ class CNNBiLSTMViewsGenerator:
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
 
-        def predict_mc(model, x_input, n_samples=10):
+        def predict_mc(model, x_input, n_samples=50):
             x_repeated = tf.repeat(x_input, repeats=n_samples, axis=0)
-            preds = model(x_input, training=False)  # Dropout off
-            return tf.squeeze(preds, axis=-1).numpy()
+            preds = predict_mc_tf(model, x_repeated)
+            return preds.numpy()
         views = {}
         view_uncertainties = {}
 

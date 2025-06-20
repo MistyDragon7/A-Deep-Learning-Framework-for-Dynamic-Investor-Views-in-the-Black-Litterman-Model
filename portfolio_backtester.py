@@ -10,7 +10,37 @@ from views_generator import CNNBiLSTMViewsGenerator
 import warnings
 warnings.filterwarnings('ignore')
 import pickle
+def plot_weight_variance_over_time(self, backtest_type='type_2', top_n_assets=10, save_path=None):
+    import matplotlib.pyplot as plt
 
+    weight_history = self.results.get(backtest_type, {}).get('weight_history', [])
+    if not weight_history:
+        print(f"No weight history found for {backtest_type}")
+        return
+
+    df_list = []
+    for entry in weight_history:
+        weights = entry['weights']
+        timestamp = pd.to_datetime(entry['end'])
+        weights.name = timestamp
+        df_list.append(weights)
+
+    weights_df = pd.DataFrame(df_list)
+    weights_df = weights_df.sort_index()
+
+    # Calculate standard deviation across time
+    weight_variances = weights_df.var()
+
+    top_assets = weight_variances.nlargest(top_n_assets).index
+    weights_df[top_assets].plot(figsize=(14, 6), title=f"Weight Variability Over Time — Top {top_n_assets}")
+    plt.ylabel("Portfolio Weight")
+    plt.xlabel("Date")
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✅ Saved weight variance plot to {save_path}")
+    # plt.show()
 def save_frozen_data(fetcher, path="data/frozen_data.pkl"):
     import os
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -173,129 +203,138 @@ class PortfolioBacktester:
         print("=" * 80)
         print("BACKTESTING TYPE 2: OUT-OF-SAMPLE TESTING WITH BI-WEEKLY REBALANCING")
         print("=" * 80)
-    
+
         if fetcher is None:
             raise ValueError("Fetcher must be passed explicitly.")
-    
+
         stock_data = fetcher.fetch_all_stocks()
         sufficient_data_stocks = {
             ticker: df for ticker, df in stock_data.items()
             if len(df) > sequence_length + prediction_horizon + 2
         }
-    
+
         if len(sufficient_data_stocks) < 2:
             print("Insufficient training data for Type 2 backtesting")
             return None
-    
+
         fetcher.stock_data = sufficient_data_stocks
         fetcher.stock_list = list(sufficient_data_stocks.keys())
         fetcher.add_technical_indicators()
         full_returns_matrix = fetcher.create_returns_matrix()
-    
+
         if full_returns_matrix.empty:
             print("Empty returns matrix for Type 2 backtesting")
             return None
-    
+
         split_point = int(len(full_returns_matrix) * 0.6)
         split_date = full_returns_matrix.index[split_point]
-    
+
         training_stock_data = {
             ticker: df.loc[:split_date].copy()
             for ticker, df in fetcher.stock_data.items()
             if len(df.loc[:split_date]) > sequence_length + prediction_horizon + 2
         }
-    
+
         if len(training_stock_data) < 2:
             print("Insufficient training data for Type 2 backtesting")
             return None
-    
+
         training_fetcher = StockDataFetcher(list(training_stock_data.keys()))
         training_fetcher.stock_data = training_stock_data
         training_returns_matrix = training_fetcher.create_returns_matrix()
-    
+
         views_generator = CNNBiLSTMViewsGenerator(len(training_stock_data), sequence_length)
         views_generator.train_all_models(training_stock_data, epochs=epochs, batch_size=batch_size)
-    
+
         if not views_generator.models:
             print("No models trained for Type 2 backtesting")
             return None
-    
+
         test_start_date = split_date
         test_end_date = full_returns_matrix.index[-1]
         dates = full_returns_matrix.loc[test_start_date:test_end_date].index
         rebalance_interval = 10  # Biweekly rebalancing
-    
+
         rolling_portfolio_returns = pd.Series(dtype=np.float64)
         cumulative_value = 1.0
         cumulative_returns_series = []
-    
+
         for start_idx in range(0, len(dates) - rebalance_interval, rebalance_interval):
             window_start = dates[start_idx]
             window_end = dates[min(start_idx + rebalance_interval - 1, len(dates) - 1)]
             test_window = full_returns_matrix.loc[window_start:window_end]
             if test_window.empty:
                 continue
-            
+
             # ✅ Slice up-to-date data for this rebalance step
             current_data = {
                 ticker: df.loc[:window_end].copy()
                 for ticker, df in fetcher.stock_data.items()
                 if len(df.loc[:window_end]) > sequence_length + prediction_horizon + 2
             }
-    
+
             if len(current_data) < 2:
                 print(f"⚠️ Skipping {window_start} → {window_end} due to insufficient data")
                 continue
-            
+
             views, view_uncertainties = views_generator.generate_investor_views(current_data, prediction_horizon)
-    
+
             # ✅ Create new fetcher + returns + aligned market caps for current period
             current_fetcher = StockDataFetcher(list(current_data.keys()))
             current_fetcher.stock_data = current_data
             current_fetcher.add_technical_indicators()
             current_returns_matrix = current_fetcher.create_returns_matrix()
-    
+
             # ✅ Match market caps only for tickers in this window
             current_fetcher.market_caps = {
                 k: v for k, v in fetcher.market_caps.items() if k in current_data and v > 0
             }
-    
+
             bl_optimizer = BlackLittermanOptimizer(current_returns_matrix, current_fetcher.market_caps, risk_free_rate=0.06)
             weights, _, _ = bl_optimizer.black_litterman_optimization(
                 views, view_uncertainties, risk_aversion=risk_aversion, tau=tau
             )
-    
+            if 'weight_history' not in self.results['type_2']:
+                self.results['type_2']['weight_history'] = []
+
+            # Save timestamped weights
+            self.results['type_2']['weight_history'].append({
+                'start': window_start,
+                'end': window_end,
+                'weights': weights.copy()
+            })
+
             aligned_weights = weights.reindex(test_window.columns).fillna(0)
             aligned_weights = aligned_weights / aligned_weights.sum()
             if aligned_weights.sum() == 0:
                 print(f"⚠️ Skipping period {window_start} to {window_end} due to zero weights")
                 continue
-            
+
             # ✅ Apply weights to actual test returns for this window
             period_returns = (test_window * aligned_weights).sum(axis=1)
             rolling_portfolio_returns = pd.concat([rolling_portfolio_returns, period_returns])
-    
+
             period_cum = (1 + period_returns).cumprod() * cumulative_value
             cumulative_value = period_cum.iloc[-1]
             cumulative_returns_series.append(period_cum)
-    
+
         portfolio_returns = rolling_portfolio_returns
         if cumulative_returns_series:
             cumulative_returns = pd.concat(cumulative_returns_series)
         else:
             print("⚠️ No cumulative returns collected during test. Aborting.")
             return None
-    
+
         portfolio_performance = self.calculate_portfolio_performance(
             weights, full_returns_matrix, test_start_date, test_end_date
         )
         portfolio_performance['portfolio_returns'] = portfolio_returns
         portfolio_performance['cumulative_returns'] = cumulative_returns
-    
+
         nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
         if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
             nifty_returns = nifty_returns['Close'].pct_change().dropna()
-    
+
         nifty_performance = None
         if not nifty_returns.empty:
             nifty_total_return = float((1 + nifty_returns).prod() - 1)
@@ -304,7 +343,7 @@ class PortfolioBacktester:
             nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
             nifty_cumulative = (1 + nifty_returns).cumprod()
             nifty_max_drawdown = float(((nifty_cumulative - nifty_cumulative.cummax()) / nifty_cumulative.cummax()).min())
-    
+
             nifty_performance = {
                 'total_return': nifty_total_return,
                 'annualized_return': nifty_annualized_return,
@@ -313,7 +352,7 @@ class PortfolioBacktester:
                 'max_drawdown': nifty_max_drawdown,
                 'cumulative_returns': nifty_cumulative
             }
-    
+
         self.results['type_2'] = {
             'portfolio_performance': portfolio_performance,
             'nifty_performance': nifty_performance,
@@ -324,7 +363,7 @@ class PortfolioBacktester:
             'training_period': f"{full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}",
             'testing_period': f"{test_start_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')} (bi-weekly rebalancing)"
         }
-    
+
         return self.results['type_2']
 
 
@@ -501,7 +540,19 @@ class PortfolioBacktester:
             if isinstance(cumret, pd.Series) and not cumret.empty:
                 cumret.to_csv(os.path.join(output_dir, f"cumulative_returns_{suffix}.csv"))
                 print(f"✅ Saved cumulative returns to cumulative_returns_{suffix}.csv")
+        # Save time-series weights (if available)
+        weight_history = res.get("weight_history", [])
+        if weight_history:
+            all_weights_df = pd.DataFrame()
+            for entry in weight_history:
+                weights = entry['weights']
+                timestamp = entry['end']  # you could use start or midpoint too
+                weights.name = pd.to_datetime(timestamp)
+                all_weights_df = pd.concat([all_weights_df, weights], axis=1)
 
+            all_weights_df = all_weights_df.T.sort_index()
+            all_weights_df.to_csv(os.path.join(output_dir, f"weights_time_series_{suffix}.csv"))
+            print(f"✅ Saved time-series weights to weights_time_series_{suffix}.csv")
         # Save summary table
         if summary_rows:
             df = pd.DataFrame(summary_rows)
