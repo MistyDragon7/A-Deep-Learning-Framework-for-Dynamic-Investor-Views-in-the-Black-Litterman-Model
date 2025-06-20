@@ -16,7 +16,24 @@ class BlackLittermanOptimizer:
             self.mean_returns = pd.Series(0, index=self.assets)
             self.cov_matrix = pd.DataFrame(0, index=self.assets, columns=self.assets)
 
-        self.market_weights = self.calculate_market_weights()
+        # ✅ Compute relative market weights based only on available assets
+        market_caps_subset = {
+            asset: self.market_caps.get(asset, 0)
+            for asset in self.assets
+            if self.market_caps.get(asset, 0) > 0
+        }
+
+        total_cap = sum(market_caps_subset.values())
+
+        if total_cap > 0:
+            self.market_weights = pd.Series({
+                asset: market_caps_subset.get(asset, 0) / total_cap
+                for asset in self.assets
+            }).fillna(0)
+        else:
+            print("⚠️ Warning: Market capitalizations missing for all assets. Using equal weights.")
+            self.market_weights = pd.Series([1 / len(self.assets)] * len(self.assets), index=self.assets)
+
         self.dynamic_risk_aversion = self.compute_dynamic_risk_aversion()
 
     def calculate_market_weights(self):

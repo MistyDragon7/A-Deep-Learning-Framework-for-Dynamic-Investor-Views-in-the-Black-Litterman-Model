@@ -4,6 +4,8 @@ from tensorflow.keras.models import load_model
 import joblib
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
+mixed_precision.set_global_policy('mixed_float16')
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Conv1D, MaxPooling1D,
                                    Bidirectional, LSTM, Dense, Dropout,
@@ -158,9 +160,10 @@ class CNNBiLSTMViewsGenerator:
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")
 
+        @tf.function
         def predict_mc(model, x_input, n_samples=10):
-            preds = np.array([model(x_input, training=True).numpy().squeeze() for _ in range(n_samples)])
-            return preds
+            preds = tf.stack([model(x_input, training=True) for _ in range(n_samples)], axis=0)
+            return tf.squeeze(preds, axis=-1).numpy()
 
         views = {}
         view_uncertainties = {}

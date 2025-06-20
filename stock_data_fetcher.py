@@ -44,10 +44,14 @@ class StockDataFetcher:
     def add_technical_indicators(self):
         """Add technical indicators to all stocks"""
         print("Adding technical indicators...")
-
+    
         for ticker in self.stock_data.keys():
             df = self.stock_data[ticker].copy()
-
+    
+            # ⚠️ NEW: Skip if already computed
+            if 'RSI' in df.columns:
+                continue
+            
             # Basic indicators
             df['Returns'] = TechnicalIndicators.calculate_returns(df['Close'])
             df['Volatility'] = TechnicalIndicators.calculate_volatility(df['Returns'])
@@ -55,23 +59,23 @@ class StockDataFetcher:
             df['MA_20'] = TechnicalIndicators.moving_average(df['Close'], 20)
             df['EMA_12'] = TechnicalIndicators.exponential_moving_average(df['Close'], 12)
             df['RSI'] = TechnicalIndicators.rsi(df['Close'])
-
+    
             # MACD
             macd, signal = TechnicalIndicators.macd(df['Close'])
             df['MACD'] = macd
             df['MACD_Signal'] = signal
-
+    
             # Bollinger Bands
             bb_upper, bb_middle, bb_lower = TechnicalIndicators.bollinger_bands(df['Close'])
             df['BB_Upper'] = bb_upper
             df['BB_Lower'] = bb_lower
             df['BB_Position'] = (df['Close'] - bb_lower) / (bb_upper - bb_lower)
-
+    
             # Price momentum and volume
             df['Price_Change'] = df['Close'].pct_change()
             df['Volume_Change'] = df['Volume'].pct_change()
-            df['Price_Momentum'] = df['Close'].pct_change(5)  # 5-day momentum
-
+            df['Price_Momentum'] = df['Close'].pct_change(5)
+    
             self.stock_data[ticker] = df
 
     def create_returns_matrix(self):
