@@ -21,14 +21,17 @@ class BlackLittermanOptimizer:
 
     def calculate_market_weights(self):
         total_market_cap = sum(self.market_caps.values())
+    
+        if total_market_cap <= 0 or not self.market_caps:
+            print("⚠️ Warning: Market capitalizations are missing or zero. Using equal weights.")
+            return pd.Series(1.0 / len(self.assets), index=self.assets) if self.assets else pd.Series()
+    
         weights = {
             asset: self.market_caps.get(asset, 0.0) / total_market_cap
             for asset in self.assets
         }
-        total_weight = sum(weights.values())
-        if total_weight > 0:
-            weights = {asset: w / total_weight for asset, w in weights.items()}
         return pd.Series(weights, index=self.assets)
+
 
     def compute_dynamic_risk_aversion(self):
         if self.mean_returns.empty or self.cov_matrix.empty or self.market_weights.empty:

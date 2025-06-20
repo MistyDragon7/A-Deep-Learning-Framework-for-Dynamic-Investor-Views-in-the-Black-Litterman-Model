@@ -169,4 +169,3 @@ class CNNBiLSTMViewsGenerator:
             print(f"{ticker}: Expected return = {expected_return:.4f}, Uncertainty = {view_uncertainty:.4f}")
 
         return views, view_uncertainties
-\
