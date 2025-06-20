@@ -46,14 +46,12 @@ class StockDataFetcher:
     def _get_market_cap(self, stock, ticker):
         """Get market cap with multiple fallback methods"""
         try:
-            # Method 1: Direct market cap from info
             info = stock.info
             market_cap = info.get('marketCap')
             
             if market_cap and market_cap > 0:
                 return market_cap
             
-            # Method 2: Calculate from shares outstanding and current price
             shares_outstanding = info.get('sharesOutstanding')
             current_price = info.get('currentPrice') or info.get('regularMarketPrice')
             
@@ -63,13 +61,11 @@ class StockDataFetcher:
                     print(f"  📊 {ticker}: Calculated market cap from shares * price")
                     return calculated_market_cap
             
-            # Method 3: Use enterprise value as proxy
             enterprise_value = info.get('enterpriseValue')
             if enterprise_value and enterprise_value > 0:
                 print(f"  📊 {ticker}: Using enterprise value as market cap proxy")
                 return enterprise_value
             
-            # Method 4: Estimate based on stock price and typical market cap ranges
             history = stock.history(period="5d")
             if not history.empty:
                 avg_price = history['Close'].mean()
@@ -78,7 +74,6 @@ class StockDataFetcher:
                 print(f"  📊 {ticker}: Estimated market cap based on price")
                 return estimated_market_cap
             
-            # Final fallback: Use a default value based on stock index
             if ticker.endswith('.NS'):  # NSE stocks
                 default_cap = 5e10  # 50 billion INR default for Indian stocks
             else:
@@ -98,11 +93,9 @@ class StockDataFetcher:
         for ticker in self.stock_data.keys():
             df = self.stock_data[ticker].copy()
     
-            # ⚠️ Skip if already computed
             if 'RSI' in df.columns:
                 continue
             
-            # Basic indicators
             df['Returns'] = TechnicalIndicators.calculate_returns(df['Close'])
             df['Volatility'] = TechnicalIndicators.calculate_volatility(df['Returns'])
             df['MA_10'] = TechnicalIndicators.moving_average(df['Close'], 10)
@@ -110,18 +103,15 @@ class StockDataFetcher:
             df['EMA_12'] = TechnicalIndicators.exponential_moving_average(df['Close'], 12)
             df['RSI'] = TechnicalIndicators.rsi(df['Close'])
     
-            # MACD
             macd, signal = TechnicalIndicators.macd(df['Close'])
             df['MACD'] = macd
             df['MACD_Signal'] = signal
     
-            # Bollinger Bands
             bb_upper, bb_middle, bb_lower = TechnicalIndicators.bollinger_bands(df['Close'])
             df['BB_Upper'] = bb_upper
             df['BB_Lower'] = bb_lower
             df['BB_Position'] = (df['Close'] - bb_lower) / (bb_upper - bb_lower)
     
-            # Price momentum and volume
             df['Price_Change'] = df['Close'].pct_change()
             df['Volume_Change'] = df['Volume'].pct_change()
             df['Price_Momentum'] = df['Close'].pct_change(5)
@@ -133,7 +123,6 @@ class StockDataFetcher:
         returns_data = {}
         common_dates = None
 
-        # Find common dates
         for ticker, df in self.stock_data.items():
             if common_dates is None:
                 common_dates = set(df.index)
@@ -142,7 +131,6 @@ class StockDataFetcher:
 
         common_dates = sorted(list(common_dates))
 
-        # Create returns matrix
         for ticker, df in self.stock_data.items():
             returns_data[ticker] = []
             for date in common_dates:

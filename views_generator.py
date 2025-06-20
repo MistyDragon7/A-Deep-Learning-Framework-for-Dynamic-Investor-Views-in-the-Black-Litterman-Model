@@ -18,7 +18,6 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from tensorflow.keras import mixed_precision
 
-# ✅ SEED BLOCK — PLACE HERE
 SEED = 42
 os.environ['PYTHONHASHSEED'] = str(SEED)
 np.random.seed(SEED)

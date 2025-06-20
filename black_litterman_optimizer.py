@@ -16,7 +16,6 @@ class BlackLittermanOptimizer:
             self.mean_returns = pd.Series(0, index=self.assets)
             self.cov_matrix = pd.DataFrame(0, index=self.assets, columns=self.assets)
 
-        # ✅ FIXED: Improved market weights calculation
         self.market_weights = self.calculate_market_weights()
         self.dynamic_risk_aversion = self.compute_dynamic_risk_aversion()
 
@@ -25,12 +24,10 @@ class BlackLittermanOptimizer:
         print(f"🔍 Debug: Available assets: {self.assets}")
         print(f"🔍 Debug: Market caps keys: {list(self.market_caps.keys()) if self.market_caps else 'Empty'}")
         
-        # Check if market_caps is valid
         if not self.market_caps or not isinstance(self.market_caps, dict):
             print("⚠️ Warning: Market caps dictionary is empty or invalid. Using equal weights.")
             return pd.Series(1.0 / len(self.assets), index=self.assets) if self.assets else pd.Series()
         
-        # Filter market caps for available assets only
         valid_market_caps = {}
         for asset in self.assets:
             market_cap = self.market_caps.get(asset, 0)
@@ -41,28 +38,23 @@ class BlackLittermanOptimizer:
         
         print(f"🔍 Debug: Valid market caps: {valid_market_caps}")
         
-        # If no valid market caps found, use equal weights
         if not valid_market_caps:
             print("⚠️ Warning: No valid market capitalizations found. Using equal weights.")
             return pd.Series(1.0 / len(self.assets), index=self.assets)
         
-        # Calculate total market cap
         total_market_cap = sum(valid_market_caps.values())
         
         if total_market_cap <= 0:
             print("⚠️ Warning: Total market cap is zero or negative. Using equal weights.")
             return pd.Series(1.0 / len(self.assets), index=self.assets)
         
-        # Calculate market weights for all assets
         weights = {}
         for asset in self.assets:
             if asset in valid_market_caps:
                 weights[asset] = valid_market_caps[asset] / total_market_cap
             else:
-                # Assign minimal weight to assets without market cap data
                 weights[asset] = 0.001  # Small but non-zero weight
         
-        # Normalize weights to ensure they sum to 1
         weights_series = pd.Series(weights, index=self.assets)
         weights_series = weights_series / weights_series.sum()
         

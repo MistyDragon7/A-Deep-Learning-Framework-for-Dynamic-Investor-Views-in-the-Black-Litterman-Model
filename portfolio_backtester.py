@@ -50,26 +50,21 @@ class PortfolioBacktester:
 
     def calculate_portfolio_performance(self, weights, returns_matrix, start_date, end_date):
         """Calculate portfolio performance metrics"""
-        # Filter returns matrix for the specified period
         period_returns = returns_matrix.loc[start_date:end_date]
 
         if period_returns.empty:
             return None
 
-        # Align weights with available stocks in returns matrix
         aligned_weights = weights.reindex(period_returns.columns, fill_value=0)
         aligned_weights = aligned_weights / aligned_weights.sum()  # Renormalize
 
-        # Calculate daily portfolio returns
         portfolio_returns = (period_returns * aligned_weights).sum(axis=1)
 
-        # Calculate metrics
         total_return = float((1 + portfolio_returns).prod() - 1)
         annualized_return = float((1 + total_return) ** (252 / len(portfolio_returns)) - 1)
         volatility = float(portfolio_returns.std() * np.sqrt(252))
         sharpe_ratio = (annualized_return - 0.06) / volatility if volatility > 0 else 0
 
-        # Maximum drawdown
         cumulative_returns = (1 + portfolio_returns).cumprod()
         rolling_max = cumulative_returns.expanding().max()
         drawdowns = (cumulative_returns - rolling_max) / rolling_max
@@ -236,7 +231,6 @@ class PortfolioBacktester:
             if test_window.empty:
                 continue
             
-            # ✅ Slice up-to-date data for this rebalance step
             current_data = {
                 ticker: df.loc[:window_end].copy()
                 for ticker, df in fetcher.stock_data.items()
@@ -249,13 +243,11 @@ class PortfolioBacktester:
             
             views, view_uncertainties = views_generator.generate_investor_views(current_data, prediction_horizon)
     
-            # ✅ Create new fetcher + returns + aligned market caps for current period
             current_fetcher = StockDataFetcher(list(current_data.keys()))
             current_fetcher.stock_data = current_data
             current_fetcher.add_technical_indicators()
             current_returns_matrix = current_fetcher.create_returns_matrix()
     
-            # ✅ Match market caps only for tickers in this window
             current_fetcher.market_caps = {
                 k: v for k, v in fetcher.market_caps.items() if k in current_data and v > 0
             }
@@ -271,7 +263,6 @@ class PortfolioBacktester:
                 print(f"⚠️ Skipping period {window_start} to {window_end} due to zero weights")
                 continue
             
-            # ✅ Apply weights to actual test returns for this window
             period_returns = (test_window * aligned_weights).sum(axis=1)
             rolling_portfolio_returns = pd.concat([rolling_portfolio_returns, period_returns])
     
@@ -478,25 +469,21 @@ class PortfolioBacktester:
                 "Excess Return": float(portfolio["annualized_return"] - nifty["annualized_return"]),
             })
 
-            # Save full weights
             weights = res.get("optimal_weights", pd.Series())
             if not weights.empty:
                 weights.to_csv(os.path.join(output_dir, f"weights_{suffix}.csv"))
                 print(f"✅ Saved weights to weights_{suffix}.csv")
 
-            # Save views
             views = res.get("views", {})
             if views:
                 pd.Series(views).to_csv(os.path.join(output_dir, f"views_{suffix}.csv"))
                 print(f"✅ Saved views to views_{suffix}.csv")
 
-            # Save uncertainties
             view_unc = res.get("view_uncertainties", {})
             if view_unc:
                 pd.Series(view_unc).to_csv(os.path.join(output_dir, f"view_uncertainties_{suffix}.csv"))
                 print(f"✅ Saved view uncertainties to view_uncertainties_{suffix}.csv")
 
-            # Save cumulative returns
             cumret = portfolio.get("cumulative_returns")
             if isinstance(cumret, pd.Series) and not cumret.empty:
                 cumret.to_csv(os.path.join(output_dir, f"cumulative_returns_{suffix}.csv"))
@@ -517,7 +504,6 @@ class PortfolioBacktester:
         result1 = None
         print("Starting Comprehensive Backtesting...")
 
-        # Set up data
         fetcher = StockDataFetcher(self.stock_list, period="5y", interval="1d")
         if use_frozen_data and os.path.exists(frozen_data_path):
             load_frozen_data(fetcher, frozen_data_path)
@@ -526,15 +512,12 @@ class PortfolioBacktester:
             save_frozen_data(fetcher, frozen_data_path)
         fetcher.add_technical_indicators()
 
-        # Store it for both backtest types
         self._shared_fetcher = fetcher
 
-        # Run both backtests
         if kwargs.get("debug", False):
             result1 = self.backtest_type_1_full_training(fetcher=fetcher, **kwargs)
         result2 = self.backtest_type_2_out_of_sample(fetcher=fetcher, **kwargs)
 
-        # Carry uncertainties to self.results
         if result1 is not None:
             self.results['type_1']['view_uncertainties'] = result1.get('view_uncertainties', {})
         if result2:
