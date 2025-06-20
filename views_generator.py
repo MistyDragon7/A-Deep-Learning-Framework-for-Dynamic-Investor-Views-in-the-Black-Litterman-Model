@@ -1,4 +1,7 @@
 import pandas as pd
+import os
+from tensorflow.keras.models import load_model
+import joblib
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -85,18 +88,34 @@ class CNNBiLSTMViewsGenerator:
 
         return model
 
-    def train_all_models(self, stock_data, epochs=50, batch_size=32):
+    def train_all_models(self, stock_data, epochs=50, batch_size=32, model_dir="saved_models"):
         print(f"Training models for {len(stock_data)} stocks...")
+        os.makedirs(model_dir, exist_ok=True)
 
         for ticker in stock_data.keys():
-            print(f"\nTraining model for {ticker}")
+            print(f"\nProcessing model for {ticker}")
 
+            model_path = os.path.join(model_dir, f"{ticker}.h5")
+            scaler_path = os.path.join(model_dir, f"{ticker}_scaler.pkl")
+
+            # Try loading model
+            if os.path.exists(model_path) and os.path.exists(scaler_path):
+                try:
+                    self.models[ticker] = load_model(model_path)
+                    self.scalers[ticker] = joblib.load(scaler_path)
+                    print(f"✓ Loaded saved model and scaler for {ticker}")
+                    continue
+                except Exception as e:
+                    print(f"⚠️ Failed to load saved model for {ticker}: {e}. Retraining...")
+
+            # Train from scratch
             X, y = self.prepare_data_for_stock(stock_data, ticker)
 
             if len(X) < 100:
-                print(f"Insufficient data for {ticker}")
+                print(f"⚠️ Insufficient data for {ticker} — Skipping")
                 continue
 
+            # Scale features
             scaler = MinMaxScaler()
             X_reshaped = X.reshape(-1, self.n_features)
             X_scaled_reshaped = scaler.fit_transform(X_reshaped)
@@ -125,14 +144,16 @@ class CNNBiLSTMViewsGenerator:
 
             self.models[ticker] = model
 
+            # Save model and scaler
+            model.save(model_path)
+            joblib.dump(scaler, scaler_path)
+
             if history.history:
                 val_loss = min(history.history.get('val_loss', [float('inf')]))
-                if val_loss == float('inf'):
-                    print(f"✓ {ticker} trained - No validation loss recorded")
-                else:
-                    print(f"✓ {ticker} trained - Best validation loss: {val_loss:.6f}")
+                print(f"✓ Trained and saved model for {ticker} — Best val_loss: {val_loss:.6f}")
             else:
-                print(f"✓ {ticker} trained - No training history recorded")
+                print(f"✓ Trained and saved model for {ticker}")
+
 
     def generate_investor_views(self, stock_data, prediction_horizon=5):
         print(f"\nGenerating investor views for {prediction_horizon} days ahead...")

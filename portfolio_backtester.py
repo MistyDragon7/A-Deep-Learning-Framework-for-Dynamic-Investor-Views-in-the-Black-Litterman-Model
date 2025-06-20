@@ -169,105 +169,140 @@ class PortfolioBacktester:
             return self.results['type_1']
 
     def backtest_type_2_out_of_sample(self, fetcher=None, sequence_length=30, epochs=30, batch_size=32,
-                                         prediction_horizon=5, risk_aversion=None, tau=0.025):
-            print("=" * 80)
-            print("BACKTESTING TYPE 2: OUT-OF-SAMPLE TESTING")
-            print("=" * 80)
+                                       prediction_horizon=5, risk_aversion=None, tau=0.025):
+        print("=" * 80)
+        print("BACKTESTING TYPE 2: OUT-OF-SAMPLE TESTING WITH BI-WEEKLY REBALANCING")
+        print("=" * 80)
 
-            if fetcher is None:
-                raise ValueError("Fetcher must be passed explicitly.")
+        if fetcher is None:
+            raise ValueError("Fetcher must be passed explicitly.")
 
-            stock_data = fetcher.fetch_all_stocks()
-            sufficient_data_stocks = {
-                ticker: df for ticker, df in stock_data.items()
-                if len(df) > sequence_length + prediction_horizon + 2
-            }
+        stock_data = fetcher.fetch_all_stocks()
+        sufficient_data_stocks = {
+            ticker: df for ticker, df in stock_data.items()
+            if len(df) > sequence_length + prediction_horizon + 2
+        }
 
-            if len(sufficient_data_stocks) < 2:
-                print("Insufficient stock data for Type 2 backtesting")
-                return None
+        if len(sufficient_data_stocks) < 2:
+            print("Insufficient training data for Type 2 backtesting")
+            return None
 
-            fetcher.stock_data = sufficient_data_stocks
-            fetcher.stock_list = list(sufficient_data_stocks.keys())
-            fetcher.add_technical_indicators()
-            full_returns_matrix = fetcher.create_returns_matrix()
+        fetcher.stock_data = sufficient_data_stocks
+        fetcher.stock_list = list(sufficient_data_stocks.keys())
+        fetcher.add_technical_indicators()
+        full_returns_matrix = fetcher.create_returns_matrix()
 
-            if full_returns_matrix.empty:
-                print("Empty returns matrix for Type 2 backtesting")
-                return None
+        if full_returns_matrix.empty:
+            print("Empty returns matrix for Type 2 backtesting")
+            return None
 
-            split_point = int(len(full_returns_matrix) * 0.6)
-            split_date = full_returns_matrix.index[split_point]
+        split_point = int(len(full_returns_matrix) * 0.6)
+        split_date = full_returns_matrix.index[split_point]
 
-            training_stock_data = {
-                ticker: df.loc[:split_date].copy()
-                for ticker, df in fetcher.stock_data.items()
-                if len(df.loc[:split_date]) > sequence_length + prediction_horizon + 2
-            }
+        training_stock_data = {
+            ticker: df.loc[:split_date].copy()
+            for ticker, df in fetcher.stock_data.items()
+            if len(df.loc[:split_date]) > sequence_length + prediction_horizon + 2
+        }
 
-            if len(training_stock_data) < 2:
-                print("Insufficient training data for Type 2 backtesting")
-                return None
+        if len(training_stock_data) < 2:
+            print("Insufficient training data for Type 2 backtesting")
+            return None
 
-            training_fetcher = StockDataFetcher(list(training_stock_data.keys()))
-            training_fetcher.stock_data = training_stock_data
-            training_returns_matrix = training_fetcher.create_returns_matrix()
+        training_fetcher = StockDataFetcher(list(training_stock_data.keys()))
+        training_fetcher.stock_data = training_stock_data
+        training_returns_matrix = training_fetcher.create_returns_matrix()
 
-            views_generator = CNNBiLSTMViewsGenerator(len(training_stock_data), sequence_length)
-            views_generator.train_all_models(training_stock_data, epochs=epochs, batch_size=batch_size)
+        views_generator = CNNBiLSTMViewsGenerator(len(training_stock_data), sequence_length)
+        views_generator.train_all_models(training_stock_data, epochs=epochs, batch_size=batch_size)
 
-            if not views_generator.models:
-                print("No models trained for Type 2 backtesting")
-                return None
+        if not views_generator.models:
+            print("No models trained for Type 2 backtesting")
+            return None
 
+        test_start_date = split_date
+        test_end_date = full_returns_matrix.index[-1]
+        dates = full_returns_matrix.loc[test_start_date:test_end_date].index
+        rebalance_interval = 10  # Biweekly rebalancing
+
+        rolling_portfolio_returns = pd.Series(dtype=np.float64)
+        cumulative_value = 1.0
+        cumulative_returns_series = []
+
+        for start_idx in range(0, len(dates) - rebalance_interval, rebalance_interval):
+            window_start = dates[start_idx]
+            window_end = dates[min(start_idx + rebalance_interval - 1, len(dates) - 1)]
+            test_window = full_returns_matrix.loc[window_start:window_end]
+            if test_window.empty:
+                continue
             views, view_uncertainties = views_generator.generate_investor_views(training_stock_data, prediction_horizon)
 
             bl_optimizer = BlackLittermanOptimizer(training_returns_matrix, training_fetcher.market_caps, risk_free_rate=0.06)
-
-            optimal_weights, bl_returns, bl_cov = bl_optimizer.black_litterman_optimization(
+            weights, _, _ = bl_optimizer.black_litterman_optimization(
                 views, view_uncertainties, risk_aversion=risk_aversion, tau=tau
             )
 
-            test_start_date = split_date
-            test_end_date = full_returns_matrix.index[-1]
+            aligned_weights = weights.reindex(test_window.columns).fillna(0)
+            aligned_weights = aligned_weights / aligned_weights.sum()
+            if aligned_weights.sum() == 0:
+                print(f"⚠️ Skipping period {window_start} to {window_end} due to zero weights")
+                continue
+            period_returns = (test_window * aligned_weights).sum(axis=1)
+            rolling_portfolio_returns = pd.concat([rolling_portfolio_returns, period_returns])
 
-            portfolio_performance = self.calculate_portfolio_performance(
-                optimal_weights, full_returns_matrix, test_start_date, test_end_date
-            )
+            period_cum = (1 + period_returns).cumprod() * cumulative_value
+            cumulative_value = period_cum.iloc[-1]
+            cumulative_returns_series.append(period_cum)
 
-            nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
-            if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
-                nifty_returns = nifty_returns['Close'].pct_change().dropna()
+        portfolio_returns = rolling_portfolio_returns
+        if cumulative_returns_series:
+            cumulative_returns = pd.concat(cumulative_returns_series)
+        else:
+            print("⚠️ No cumulative returns collected during test. Aborting.")
+            return None
+        cumulative_returns = pd.concat(cumulative_returns_series)
 
-            nifty_performance = None
-            if not nifty_returns.empty:
-                nifty_total_return = float((1 + nifty_returns).prod() - 1)
-                nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
-                nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
-                nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
-                nifty_cumulative = (1 + nifty_returns).cumprod()
-                nifty_max_drawdown = float(((nifty_cumulative - nifty_cumulative.cummax()) / nifty_cumulative.cummax()).min())
+        portfolio_performance = self.calculate_portfolio_performance(
+            weights, full_returns_matrix, test_start_date, test_end_date
+        )
+        portfolio_performance['portfolio_returns'] = portfolio_returns
+        portfolio_performance['cumulative_returns'] = cumulative_returns
 
-                nifty_performance = {
-                    'total_return': nifty_total_return,
-                    'annualized_return': nifty_annualized_return,
-                    'volatility': nifty_volatility,
-                    'sharpe_ratio': nifty_sharpe,
-                    'max_drawdown': nifty_max_drawdown,
-                    'cumulative_returns': nifty_cumulative
-                }
+        nifty_returns = self.fetch_nifty_data(test_start_date, test_end_date)
+        if isinstance(nifty_returns, pd.DataFrame) and 'Close' in nifty_returns.columns:
+            nifty_returns = nifty_returns['Close'].pct_change().dropna()
 
-            self.results['type_2'] = {
-                'portfolio_performance': portfolio_performance,
-                'nifty_performance': nifty_performance,
-                'optimal_weights': optimal_weights,
-                'views': views,
-                'view_uncertainties': view_uncertainties,
-                'split_date': split_date,
-                'training_period': f"{full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}",
-                'testing_period': f"{test_start_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')}"
+        nifty_performance = None
+        if not nifty_returns.empty:
+            nifty_total_return = float((1 + nifty_returns).prod() - 1)
+            nifty_annualized_return = float((1 + nifty_total_return) ** (252 / len(nifty_returns)) - 1)
+            nifty_volatility = float(nifty_returns.std()) * np.sqrt(252)
+            nifty_sharpe = (nifty_annualized_return - 0.06) / nifty_volatility if nifty_volatility > 0 else 0
+            nifty_cumulative = (1 + nifty_returns).cumprod()
+            nifty_max_drawdown = float(((nifty_cumulative - nifty_cumulative.cummax()) / nifty_cumulative.cummax()).min())
+
+            nifty_performance = {
+                'total_return': nifty_total_return,
+                'annualized_return': nifty_annualized_return,
+                'volatility': nifty_volatility,
+                'sharpe_ratio': nifty_sharpe,
+                'max_drawdown': nifty_max_drawdown,
+                'cumulative_returns': nifty_cumulative
             }
-            return self.results['type_2']
+
+        self.results['type_2'] = {
+            'portfolio_performance': portfolio_performance,
+            'nifty_performance': nifty_performance,
+            'optimal_weights': weights,
+            'views': views,
+            'view_uncertainties': view_uncertainties,
+            'split_date': split_date,
+            'training_period': f"{full_returns_matrix.index[0].strftime('%Y-%m-%d')} to {split_date.strftime('%Y-%m-%d')}",
+            'testing_period': f"{test_start_date.strftime('%Y-%m-%d')} to {test_end_date.strftime('%Y-%m-%d')} (bi-weekly rebalancing)"
+        }
+
+        return self.results['type_2']
+
 
     def display_results(self):
         """Display comprehensive backtesting results"""
@@ -470,7 +505,8 @@ class PortfolioBacktester:
         self._shared_fetcher = fetcher
 
         # Run both backtests
-        result1 = self.backtest_type_1_full_training(fetcher=fetcher, **kwargs)
+        if kwargs.get("debug", False):
+            result1 = self.backtest_type_1_full_training(fetcher=fetcher, **kwargs)
         result2 = self.backtest_type_2_out_of_sample(fetcher=fetcher, **kwargs)
 
         # Carry uncertainties to self.results
