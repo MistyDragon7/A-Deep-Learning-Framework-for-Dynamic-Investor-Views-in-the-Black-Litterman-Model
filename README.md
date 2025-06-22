@@ -1,5 +1,5 @@
 
-# Black-Litterman + CNN-BiLSTM Portfolio Optimizer for NIFTY 50
+# A Deep Learning Framework for Dynamic Investor Views in the Black-Litterman Model
 
 This repository contains a comprehensive portfolio optimization pipeline that integrates the **Black-Litterman model** with **machine learning-based investor views**, using CNN-BiLSTM networks and Monte Carlo Dropout to model return expectations and uncertainty.
 
