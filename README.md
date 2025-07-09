@@ -120,7 +120,7 @@ Modify these parameters inside `main.py`:
 
 ```python
 sequence_length = 30
-epochs = 2
+epochs = 20
 batch_size = 34
 prediction_horizon = 5
 tau = 0.025
