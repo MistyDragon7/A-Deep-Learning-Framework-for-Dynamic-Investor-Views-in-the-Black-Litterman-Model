@@ -92,6 +92,8 @@ The backtesting process is designed to be efficient by separating model training
 - `views_type_*.csv`: CNN-BiLSTM model outputs.
 - `cumulative_returns_type_*.csv`: Strategy growth over time.
 
+![Example Performance Comparison](result.jpg)
+
 ---
 
 ## 🛠️ Usage
