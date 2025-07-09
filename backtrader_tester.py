@@ -42,6 +42,7 @@ from typing import Dict, List
 
 import backtrader as bt
 import pandas as pd
+import numpy as np
 
 from stock_data_fetcher import StockDataFetcher  # filecite turn2file1
 from views_generator import CNNBiLSTMViewsGenerator  # filecite turn2file0
@@ -300,7 +301,7 @@ class BLWeightPlaybackStrategy(bt.Strategy):
         self.last_rebalanced = current_dt
 
 
-def run_backtest(weights_path=WEIGHTS_PATH_DEFAULT, benchmark_symbol=BENCHMARK_SYM):
+def run_backtest(weights_path=WEIGHTS_PATH_DEFAULT, benchmark_symbol=BENCHMARK_SYM, output_dir="results"):
     weights_df = pd.read_parquet(weights_path)
     # Ensure weights_df index is normalized for comparison
     weights_df.index = pd.to_datetime(weights_df.index).normalize()
@@ -377,8 +378,64 @@ def run_backtest(weights_path=WEIGHTS_PATH_DEFAULT, benchmark_symbol=BENCHMARK_S
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.show()
+    # plt.show() # Removed plt.show()
 
+    # Calculate and return performance metrics
+    portfolio_performance = _calculate_performance_metrics(portfolio_series, INITIAL_CASH)
+    nifty_performance = _calculate_performance_metrics(nifty_series, INITIAL_CASH)
+
+    return portfolio_series, nifty_series, portfolio_performance, nifty_performance
+
+def _calculate_performance_metrics(series: pd.Series, initial_value: float) -> Dict[str, float]:
+    # Ensure series is not empty and contains valid numbers
+    if series.empty or not pd.api.types.is_numeric_dtype(series):
+        return {
+            "annualized_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "volatility": 0.0,
+            "max_drawdown": 0.0,
+        }
+
+    # Calculate daily returns from the value series
+    daily_returns = series.pct_change().dropna()
+
+    if daily_returns.empty:
+        return {
+            "annualized_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "volatility": 0.0,
+            "max_drawdown": 0.0,
+        }
+
+    # Annualized Return (assuming daily data and 252 trading days)
+    # The last value in the series represents the final portfolio value
+    total_return = (series.iloc[-1] / initial_value) - 1
+    time_delta = series.index[-1] - series.index[0]
+    num_years = time_delta.days / 365.25 if time_delta.days > 0 else 0.0
+    annualized_return = (1 + total_return)**(1 / num_years) - 1 if num_years > 0 else 0.0
+
+    # Volatility (Annualized Standard Deviation of Daily Returns)
+    annualized_volatility = daily_returns.std() * np.sqrt(252)
+
+    # Sharpe Ratio (assuming risk_free_rate = 0 for simplicity, or define it)
+    # Risk-free rate is often close to zero for short-term T-bills; adjust if specific rate is needed
+    risk_free_rate = 0.06 # Using the same as in BlackLittermanOptimizer for consistency if applicable
+    excess_daily_returns = daily_returns - (risk_free_rate / 252)
+    sharpe_ratio = excess_daily_returns.mean() / excess_daily_returns.std() * np.sqrt(252) if excess_daily_returns.std() != 0 else 0.0
+
+    # Max Drawdown
+    # Calculate cumulative returns for drawdown calculation
+    cumulative_returns = (1 + daily_returns).cumprod()
+    peak = cumulative_returns.expanding(min_periods=1).max()
+    drawdown = (cumulative_returns - peak) / peak
+    max_drawdown = drawdown.min() if not drawdown.empty else 0.0
+
+    return {
+        "annualized_return": annualized_return,
+        "sharpe_ratio": sharpe_ratio,
+        "volatility": annualized_volatility,
+        "max_drawdown": max_drawdown,
+    }
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -389,6 +446,7 @@ def _parse_args():
     p.add_argument("--stage", choices=["precompute", "backtest"], required=True, help="Which stage to run")
     p.add_argument("--symbols", nargs="*", default=DEFAULT_SYMBOLS, help="Ticker list (space‑separated)")
     p.add_argument("--weights_path", default=WEIGHTS_PATH_DEFAULT, help="Parquet file to read/write weights")
+    p.add_argument("--output_dir", default="results", help="Directory to save backtest results and plots.")
     return p.parse_args()
 
 
@@ -398,7 +456,7 @@ def main():
     if args.stage == "precompute":
         precompute_weights(args.symbols, args.weights_path)
     else:
-        run_backtest(args.weights_path)
+        run_backtest(args.weights_path, output_dir=args.output_dir)
 
 if __name__ == "__main__":
     main() 

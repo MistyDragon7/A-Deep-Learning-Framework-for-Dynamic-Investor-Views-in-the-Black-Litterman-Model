@@ -1,2 +1,8 @@
+saved_models/
 .venv/
 pyrightconfig.json
+results/
+Report.docx
+report.pdf
+results.zip
+# saved_models/*.*

@@ -65,11 +65,42 @@ class BlackLittermanOptimizer:
         return weights_series
 
     def compute_dynamic_risk_aversion(self):
-        """Compute dynamic risk aversion with better error handling"""
-        # Fixed risk aversion to 3.0 for stability as per user request.
-        # This overrides any dynamic calculation.
-        print("✅ Using fixed risk aversion (3.0)")
-        return 3.0
+        """Compute dynamic risk aversion (lambda) from market data."""
+        if self.returns_matrix.empty or self.market_weights.empty or self.market_weights.sum() == 0:
+            print("⚠️ Warning: Returns matrix or market weights are empty/invalid for dynamic risk aversion calculation. Using default 3.0.")
+            return 3.0
+
+        # Calculate market portfolio returns using current market weights
+        # Ensure alignment of columns and index
+        aligned_returns = self.returns_matrix[self.market_weights.index]
+        market_portfolio_daily_returns = aligned_returns.dot(self.market_weights)
+
+        if market_portfolio_daily_returns.empty:
+            print("⚠️ Warning: Market portfolio daily returns are empty. Using default 3.0.")
+            return 3.0
+
+        # Annualized mean of market excess returns
+        # Assuming daily returns, so we use 252 trading days
+        annualized_market_return = market_portfolio_daily_returns.mean() * 252
+        annualized_market_excess_return = annualized_market_return - self.risk_free_rate
+
+        # Annualized variance of market returns
+        annualized_market_variance = market_portfolio_daily_returns.var() * 252
+
+        if annualized_market_variance <= 1e-9: # Check for near-zero variance
+            print("⚠️ Warning: Annualized market variance is zero or near-zero. Cannot calculate dynamic risk aversion. Using default 3.0.")
+            return 3.0
+
+        dynamic_lambda = annualized_market_excess_return / annualized_market_variance
+        
+        # Ensure lambda is positive and within a reasonable range (e.g., between 1 and 10)
+        # If it's negative or excessively large, revert to a sensible default
+        if dynamic_lambda <= 0 or dynamic_lambda > 100:
+            print(f"⚠️ Warning: Calculated dynamic risk aversion ({dynamic_lambda:.2f}) is out of sensible range. Using default 3.0.")
+            return 3.0
+
+        print(f"✅ Dynamically calculated risk aversion (lambda): {dynamic_lambda:.2f}")
+        return dynamic_lambda
 
     def calculate_implied_returns(self, risk_aversion=None):
         if risk_aversion is None:
