@@ -13,8 +13,9 @@ class BlackLittermanOptimizer:
             self.cov_matrix = self.returns_matrix.cov() * 252
         else:
             print("Warning: Returns matrix is empty.")
-            self.mean_returns = pd.Series(0, index=self.assets)
-            self.cov_matrix = pd.DataFrame(0, index=self.assets, columns=self.assets)
+            # Explicitly create pandas.Index objects for linter clarity
+            self.mean_returns = pd.Series(0, index=pd.Index(self.assets))
+            self.cov_matrix = pd.DataFrame(0, index=pd.Index(self.assets), columns=pd.Index(self.assets))
 
         self.market_weights = self.calculate_market_weights()
         self.dynamic_risk_aversion = self.compute_dynamic_risk_aversion()
@@ -26,7 +27,7 @@ class BlackLittermanOptimizer:
         
         if not self.market_caps or not isinstance(self.market_caps, dict):
             print("⚠️ Warning: Market caps dictionary is empty or invalid. Using equal weights.")
-            return pd.Series(1.0 / len(self.assets), index=self.assets) if self.assets else pd.Series()
+            return pd.Series(1.0 / len(self.assets), index=pd.Index(self.assets)) if self.assets else pd.Series()
         
         valid_market_caps = {}
         for asset in self.assets:
@@ -40,13 +41,13 @@ class BlackLittermanOptimizer:
         
         if not valid_market_caps:
             print("⚠️ Warning: No valid market capitalizations found. Using equal weights.")
-            return pd.Series(1.0 / len(self.assets), index=self.assets)
+            return pd.Series(1.0 / len(self.assets), index=pd.Index(self.assets))
         
         total_market_cap = sum(valid_market_caps.values())
         
         if total_market_cap <= 0:
             print("⚠️ Warning: Total market cap is zero or negative. Using equal weights.")
-            return pd.Series(1.0 / len(self.assets), index=self.assets)
+            return pd.Series(1.0 / len(self.assets), index=pd.Index(self.assets))
         
         weights = {}
         for asset in self.assets:
@@ -55,7 +56,7 @@ class BlackLittermanOptimizer:
             else:
                 weights[asset] = 0.001  # Small but non-zero weight
         
-        weights_series = pd.Series(weights, index=self.assets)
+        weights_series = pd.Series(weights, index=pd.Index(self.assets))
         weights_series = weights_series / weights_series.sum()
         
         print(f"✅ Market weights calculated successfully")
@@ -65,37 +66,16 @@ class BlackLittermanOptimizer:
 
     def compute_dynamic_risk_aversion(self):
         """Compute dynamic risk aversion with better error handling"""
-        if self.mean_returns.empty or self.cov_matrix.empty or self.market_weights.empty:
-            print("⚠️ Using default risk aversion (3.0) due to missing data")
-            return 3.0
-        
-        try:
-            expected_excess_return = self.mean_returns.mean()
-            market_variance = float(self.market_weights.T @ self.cov_matrix @ self.market_weights)
-            
-            if market_variance <= 0:
-                print("⚠️ Market variance is zero or negative. Using default risk aversion.")
-                return 3.0
-            
-            implied_lambda = expected_excess_return / market_variance
-            
-            # Ensure reasonable bounds for risk aversion
-            if 0 < implied_lambda < 20:
-                print(f"✅ Dynamic risk aversion: {implied_lambda:.3f}")
-                return implied_lambda
-            else:
-                print(f"⚠️ Risk aversion out of bounds ({implied_lambda:.3f}). Using default (3.0)")
-                return 3.0
-                
-        except Exception as e:
-            print(f"⚠️ Error computing risk aversion: {e}. Using default (3.0)")
-            return 3.0
+        # Fixed risk aversion to 3.0 for stability as per user request.
+        # This overrides any dynamic calculation.
+        print("✅ Using fixed risk aversion (3.0)")
+        return 3.0
 
     def calculate_implied_returns(self, risk_aversion=None):
         if risk_aversion is None:
             risk_aversion = self.dynamic_risk_aversion
         implied_excess_returns = risk_aversion * np.dot(self.cov_matrix, self.market_weights)
-        return pd.Series(implied_excess_returns, index=self.assets)
+        return pd.Series(implied_excess_returns, index=pd.Index(self.assets))
 
     def black_litterman_optimization(self, views, view_uncertainties, risk_aversion=None, tau=0.025):
         if risk_aversion is None:
@@ -137,7 +117,7 @@ class BlackLittermanOptimizer:
             cov_bl = self.cov_matrix
 
         weights = self.optimize_portfolio(bl_returns, cov_bl, risk_aversion)
-        return weights, pd.Series(bl_returns, index=self.assets), pd.DataFrame(cov_bl, index=self.assets, columns=self.assets)
+        return weights, pd.Series(bl_returns, index=pd.Index(self.assets)), pd.DataFrame(cov_bl, index=pd.Index(self.assets), columns=pd.Index(self.assets))
 
     def optimize_portfolio(self, expected_returns, cov_matrix, risk_aversion):
         try:
@@ -146,6 +126,6 @@ class BlackLittermanOptimizer:
             weights = raw_weights / risk_aversion
             weights = np.maximum(weights, 0)
             total = weights.sum()
-            return pd.Series(weights / total if total > 0 else weights, index=self.assets)
+            return pd.Series(weights / total if total > 0 else weights, index=pd.Index(self.assets))
         except:
-            return pd.Series(np.ones(len(self.assets)) / len(self.assets), index=self.assets)
+            return pd.Series(np.ones(len(self.assets)) / len(self.assets), index=pd.Index(self.assets))

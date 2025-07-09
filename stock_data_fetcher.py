@@ -2,13 +2,15 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from technical_indicators import TechnicalIndicators
+from typing import List
 
 class StockDataFetcher:
     """Fetch and preprocess stock data"""
 
-    def __init__(self, stock_list=None, period="2y", interval="1d"):
-        self.stock_list = stock_list
-        self.period = period
+    def __init__(self, stock_list: List[str] | None = None, start_date: str | None = None, end_date: str | None = None, interval="1d"):
+        self.stock_list = stock_list if stock_list is not None else []
+        self.start_date = start_date
+        self.end_date = end_date
         self.interval = interval
         self.stock_data = {}
         self.returns_matrix = None
@@ -18,13 +20,22 @@ class StockDataFetcher:
         """Fetch data for all stocks with improved market cap handling"""
         print(f"Fetching data for {len(self.stock_list)} stocks...")
 
+        if not self.stock_list:
+            print("No stocks provided to fetch data for. Skipping fetching.")
+            return {}
+
         for i, ticker in enumerate(self.stock_list):
             try:
                 print(f"Fetching {ticker} ({i+1}/{len(self.stock_list)})")
                 stock = yf.Ticker(ticker)
-                df = stock.history(period=self.period, interval=self.interval)
+                df = stock.history(start=self.start_date, end=self.end_date, interval=self.interval)
 
                 if not df.empty and len(df) > 100:
+                    df.index = pd.to_datetime(df.index)
+                    if df.index.tz is not None:
+                        df.index = df.index.tz_convert(None).normalize()
+                    else:
+                        df.index = df.index.normalize()
                     df = df.dropna()
                     self.stock_data[ticker] = df
 
@@ -69,15 +80,12 @@ class StockDataFetcher:
             history = stock.history(period="5d")
             if not history.empty:
                 avg_price = history['Close'].mean()
-                # Rough estimate: assume 1 billion shares for unknown stocks
                 estimated_market_cap = avg_price * 1e9
-                print(f"  📊 {ticker}: Estimated market cap based on price")
+                print(f"{ticker}: Estimated market cap based on price")
                 return estimated_market_cap
             
-            if ticker.endswith('.NS'):  # NSE stocks
-                default_cap = 5e10  # 50 billion INR default for Indian stocks
-            else:
-                default_cap = 1e12  # 1 trillion default for other stocks
+            
+            default_cap = 5e10  # 50 billion INR default for Indian stocks
             
             print(f"  ⚠️ {ticker}: Using default market cap ({default_cap:,.0f})")
             return default_cap
@@ -121,13 +129,16 @@ class StockDataFetcher:
     def create_returns_matrix(self):
         """Create returns matrix for all stocks"""
         returns_data = {}
-        common_dates = None
+        common_dates = None # Initialize to None
 
         for ticker, df in self.stock_data.items():
             if common_dates is None:
                 common_dates = set(df.index)
             else:
                 common_dates = common_dates.intersection(set(df.index))
+        
+        if common_dates is None:
+            common_dates = [] # Ensure it's an empty list if no data was processed
 
         common_dates = sorted(list(common_dates))
 
@@ -140,7 +151,10 @@ class StockDataFetcher:
                 else:
                     returns_data[ticker].append(0)
 
-        self.returns_matrix = pd.DataFrame(returns_data, index=common_dates)
+        self.returns_matrix = pd.DataFrame(returns_data, index=pd.Index(common_dates))
+        print(f"Debug: Number of common dates: {len(common_dates)}")
+        if not common_dates:
+            print("Debug: No common dates found across all stocks in the specified period.")
         return self.returns_matrix
 
     def debug_market_caps(self):

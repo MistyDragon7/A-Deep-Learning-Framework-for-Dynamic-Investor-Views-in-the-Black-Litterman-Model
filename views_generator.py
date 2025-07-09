@@ -1,11 +1,10 @@
 import pandas as pd
 import os
-from tensorflow.keras.models import load_model
+# from tensorflow.keras.models import load_model # Will use tf.keras.models.load_model
 import joblib
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import mixed_precision
-mixed_precision.set_global_policy('mixed_float16')
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (Input, Conv1D, MaxPooling1D,
                                    Bidirectional, LSTM, Dense, Dropout,
@@ -13,10 +12,12 @@ from tensorflow.keras.layers import (Input, Conv1D, MaxPooling1D,
                                    GaussianNoise)
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.losses import MeanSquaredError
+from tensorflow.keras.metrics import MeanAbsoluteError
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from tensorflow.keras import mixed_precision
+# from tensorflow.keras import mixed_precision # Redundant after first import
 
 SEED = 42
 os.environ['PYTHONHASHSEED'] = str(SEED)
@@ -25,6 +26,7 @@ tf.random.set_seed(SEED)
 tf.keras.utils.set_random_seed(SEED)
 tf.config.experimental.enable_op_determinism()  # Ensure full determinism
 mixed_precision.set_global_policy('mixed_float16')
+tf.config.optimizer.set_jit(True) # Enable XLA for potential speedup
 @tf.function(reduce_retracing=True)
 def predict_mc_tf(model, x_repeated):
     return tf.squeeze(model(x_repeated, training=True), axis=-1)
@@ -98,8 +100,8 @@ class CNNBiLSTMViewsGenerator:
         output = Dense(1, activation='linear')(x)
 
         model = Model(inputs=inputs, outputs=output)
-        from tensorflow.keras.losses import MeanSquaredError
-        from tensorflow.keras.metrics import MeanAbsoluteError
+        # from tensorflow.keras.losses import MeanSquaredError
+        # from tensorflow.keras.metrics import MeanAbsoluteError
 
         model.compile(
             optimizer=Adam(learning_rate=0.001),
@@ -110,31 +112,35 @@ class CNNBiLSTMViewsGenerator:
 
         return model
 
-    def train_all_models(self, stock_data, epochs=50, batch_size=32, model_dir="saved_models"):
+    def train_all_models(self, stock_data, epochs=50, batch_size=32, model_dir="saved_models", training_end_date: pd.Timestamp = None):
         print(f"Training models for {len(stock_data)} stocks...")
         os.makedirs(model_dir, exist_ok=True)
+
+        training_suffix = "" # Default empty suffix
+        if training_end_date is not None:
+            training_suffix = f"_{training_end_date.strftime('%Y%m%d')}"
 
         for ticker in stock_data.keys():
             print(f"\nProcessing model for {ticker}")
 
-            model_path = os.path.join(model_dir, f"{ticker}.h5")
-            scaler_path = os.path.join(model_dir, f"{ticker}_scaler.pkl")
+            model_path = os.path.join(model_dir, f"{ticker}{training_suffix}.h5")
+            scaler_path = os.path.join(model_dir, f"{ticker}{training_suffix}_scaler.pkl")
 
-            # Try loading model
+            # Restore logic for loading existing models for this specific period
             if os.path.exists(model_path) and os.path.exists(scaler_path):
                 try:
-                    self.models[ticker] = load_model(model_path)
+                    self.models[ticker] = tf.keras.models.load_model(model_path, custom_objects={'mc_dropout': mc_dropout})
                     self.scalers[ticker] = joblib.load(scaler_path)
-                    print(f"✓ Loaded saved model and scaler for {ticker}")
+                    print(f"✓ Loaded saved model and scaler for {ticker} (period: {training_end_date.date() if training_end_date else 'N/A'})")
                     continue
                 except Exception as e:
-                    print(f"⚠️ Failed to load saved model for {ticker}: {e}. Retraining...")
+                    print(f"⚠️ Failed to load saved model for {ticker} (period: {training_end_date.date() if training_end_date else 'N/A'}): {e}. Retraining...")
 
             # Train from scratch
             X, y = self.prepare_data_for_stock(stock_data, ticker)
 
             if len(X) < 100:
-                print(f"⚠️ Insufficient data for {ticker} — Skipping")
+                print(f"Insufficient data for {ticker} — Skipping")
                 continue
 
             # Scale features
@@ -167,7 +173,7 @@ class CNNBiLSTMViewsGenerator:
             self.models[ticker] = model
 
             # Save model and scaler
-            model.save(model_path)
+            tf.keras.models.save_model(model, model_path)
             joblib.dump(scaler, scaler_path)
 
             if history.history:
@@ -182,7 +188,8 @@ class CNNBiLSTMViewsGenerator:
 
         def predict_mc(model, x_input, n_samples=10):
             x_repeated = tf.repeat(x_input, repeats=n_samples, axis=0)
-            preds = model(x_repeated, training=True)  # Dropout off
+            # Ensure dropout is active during inference for MC Dropout
+            preds = model(x_repeated, training=True) 
             return tf.squeeze(preds, axis=-1).numpy()
         views = {}
         view_uncertainties = {}
@@ -205,7 +212,7 @@ class CNNBiLSTMViewsGenerator:
 
             mc_preds = predict_mc(self.models[ticker], X_latest_scaled, n_samples=50)
             expected_return = np.mean(mc_preds)
-            view_uncertainty = max(np.std(mc_preds), 0.001)
+            view_uncertainty = max(float(np.std(mc_preds)), 0.001) # Explicitly cast to float
             views[ticker] = expected_return
             view_uncertainties[ticker] = view_uncertainty
 
