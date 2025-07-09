@@ -12,6 +12,14 @@ This repository contains a comprehensive portfolio optimization pipeline that in
 
 ---
 
+## Intellectual Property Notice
+
+All ideas, methodologies, and original content within this repository are proprietary and are the exclusive intellectual property of the project owner(s). Unauthorized use, reproduction, distribution, or adaptation of these concepts for academic publications, research, commercial purposes, or any other derived work is strictly prohibited without explicit prior written permission. This includes, but is not limited to, the Black-Litterman integration with machine learning views, Monte Carlo Dropout application for uncertainty, and the overall portfolio optimization pipeline design. For inquiries regarding licensing or collaboration, please contact [Your Contact Information Here].
+
+**Important Note:** While these additions clarify your intent and assert your rights, I am an AI and cannot provide legal advice. For comprehensive and legally robust protection of your intellectual property, especially regarding preventing others from publishing based on your ideas, I strongly recommend consulting with a qualified intellectual property lawyer. They can advise you on legal avenues such as patents or more specific licensing agreements that best suit your needs.
+
+---
+
 ## Repository Structure
 
 ```
